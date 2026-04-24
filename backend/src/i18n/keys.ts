@@ -15,8 +15,9 @@ function loadFrontendRu(): Record<string, unknown> {
   if (_ruCache) return _ruCache;
   for (const path of getLocaleCandidatePaths("ru")) {
     try {
-      _ruCache = JSON.parse(readFileSync(path, "utf-8"));
-      return _ruCache;
+      const parsed = JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+      _ruCache = parsed;
+      return parsed;
     } catch {
       /* next */
     }
