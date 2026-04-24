@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useClientAuth } from "@/contexts/client-auth";
@@ -365,7 +365,10 @@ function SettingsPopover() {
             <GlassSelect
               value={preferredLang}
               onChange={(v) => setPreferredLang(v)}
-              options={langs.map((l) => ({ value: l, label: l === "ru" ? "Русский" : l === "en" ? "English" : l.toUpperCase() }))}
+              options={langs.map((l) => ({
+                value: l,
+                label: l === "ru" ? "Русский" : l === "en" ? "English" : l === "fa" ? "فارسی" : l === "zh-CN" ? "简体中文" : l,
+              }))}
             />
           </div>
           <div className="space-y-1.5">

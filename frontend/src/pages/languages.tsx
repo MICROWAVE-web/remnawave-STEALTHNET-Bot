@@ -49,6 +49,25 @@ const LANG_NAMES: Record<string, string> = {
   uz: "O'zbekcha",
 };
 
+Object.assign(LANG_NAMES, {
+  "zh-CN": "简体中文",
+  "zh-TW": "繁體中文",
+  "zh-HK": "中文（香港）",
+});
+
+function normalizeLanguageCode(code: string): string {
+  const trimmed = code.trim().replace(/_/g, "-");
+  if (!trimmed) return "";
+  const [lang, region, ...rest] = trimmed.split("-");
+  if (!region) return lang.toLowerCase();
+  return [lang.toLowerCase(), region.toUpperCase(), ...rest].join("-");
+}
+
+function getLanguageName(code: string): string {
+  const normalized = normalizeLanguageCode(code);
+  return LANG_NAMES[normalized] || LANG_NAMES[normalized.toLowerCase()] || normalized || code;
+}
+
 function flattenObj(obj: Record<string, unknown>, prefix = ""): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [k, v] of Object.entries(obj)) {
@@ -213,7 +232,7 @@ function LanguageEditor({
           <Globe className="h-6 w-6 text-primary shrink-0" />
           <div>
             <h2 className="text-xl font-bold text-foreground">
-              {LANG_NAMES[code] || code}
+              {getLanguageName(code)}
               <span className="ml-2 text-sm font-normal text-muted-foreground uppercase">{code}</span>
             </h2>
             <p className="text-sm text-muted-foreground">
@@ -362,7 +381,7 @@ export default function LanguagesPage() {
   useEffect(() => { loadLanguages(); }, [loadLanguages]);
 
   const handleAdd = async () => {
-    const code = addCode.trim().toLowerCase();
+    const code = normalizeLanguageCode(addCode);
     if (!code || code.length < 2) return;
     setAddLoading(true);
     try {
@@ -471,7 +490,7 @@ export default function LanguagesPage() {
                         {lang.code}
                       </span>
                       <span className="text-sm text-muted-foreground">
-                        {LANG_NAMES[lang.code] || lang.code}
+                        {getLanguageName(lang.code)}
                       </span>
                     </div>
                     <span
@@ -555,14 +574,14 @@ export default function LanguagesPage() {
               <Label htmlFor="lang-code">Language code</Label>
               <Input
                 id="lang-code"
-                placeholder="e.g. en, uk, fr, de"
+                placeholder="e.g. en, fa, zh-CN, zh-TW"
                 value={addCode}
-                onChange={(e) => setAddCode(e.target.value.replace(/[^a-zA-Z]/g, "").slice(0, 5))}
-                maxLength={5}
+                onChange={(e) => setAddCode(e.target.value.replace(/[^a-zA-Z-]/g, "").slice(0, 10))}
+                maxLength={10}
               />
               <p className="text-xs text-muted-foreground">
-                {LANG_NAMES[addCode.toLowerCase()] && (
-                  <span className="text-foreground">{LANG_NAMES[addCode.toLowerCase()]}</span>
+                {getLanguageName(addCode) !== normalizeLanguageCode(addCode) && (
+                  <span className="text-foreground">{getLanguageName(addCode)}</span>
                 )}
               </p>
             </div>
@@ -587,7 +606,7 @@ export default function LanguagesPage() {
           <p className="text-sm text-muted-foreground py-2">
             Are you sure you want to delete the{" "}
             <strong className="text-foreground">
-              {deleteTarget && (LANG_NAMES[deleteTarget] || deleteTarget)}
+              {deleteTarget && getLanguageName(deleteTarget)}
             </strong>{" "}
             ({deleteTarget}) language pack? This action cannot be undone.
           </p>
