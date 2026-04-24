@@ -51,8 +51,13 @@ function formatRuDays(n: number): string {
 
 const userLangCache = new Map<number, string>();
 
+function normalizeBotLang(lang: string) {
+  const normalized = lang.trim().replace(/_/g, "-");
+  return normalized.toLowerCase() === "zh-cn" ? "zh-CN" : normalized.toLowerCase();
+}
+
 function setUserLang(userId: number, lang: string) {
-  userLangCache.set(userId, lang);
+  userLangCache.set(userId, normalizeBotLang(lang));
 }
 
 function getUserLang(userId: number): string {

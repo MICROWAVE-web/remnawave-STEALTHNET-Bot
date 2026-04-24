@@ -1,8 +1,10 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { randomBytes } from "crypto";
+import { readFileSync } from "fs";
 import { prisma } from "../../db.js";
 import { env } from "../../config/index.js";
+import { getLocaleCandidatePaths } from "../../i18n/lang-pack-paths.js";
 
 const SALT_ROUNDS = 12;
 
@@ -11,7 +13,8 @@ const LANG_PACK_TTL = 60_000;
 
 async function loadAllLanguagePacks(activeLangs: string[]): Promise<Record<string, Record<string, unknown>>> {
   const result: Record<string, Record<string, unknown>> = {};
-  const langKeys = activeLangs.filter((l) => l !== "ru").map((l) => `lang_pack_${l}`);
+  const codes = activeLangs.filter((l) => l !== "ru");
+  const langKeys = codes.map((l) => `lang_pack_${l}`);
   if (!langKeys.length) return result;
   const now = Date.now();
   const toLoad: string[] = [];
@@ -26,13 +29,30 @@ async function loadAllLanguagePacks(activeLangs: string[]): Promise<Record<strin
   }
   if (toLoad.length) {
     const rows = await prisma.systemSetting.findMany({ where: { key: { in: toLoad } } });
+    const loadedKeys = new Set<string>();
     for (const row of rows) {
       const code = row.key.replace("lang_pack_", "");
       try {
         const parsed = JSON.parse(row.value);
         _langPackCache.set(row.key, { data: parsed, ts: now });
         result[code] = parsed;
+        loadedKeys.add(row.key);
       } catch { /* skip invalid JSON */ }
+    }
+
+    for (const key of toLoad) {
+      if (loadedKeys.has(key)) continue;
+      const code = key.replace("lang_pack_", "");
+      for (const path of getLocaleCandidatePaths(code)) {
+        try {
+          const parsed = JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+          _langPackCache.set(key, { data: parsed, ts: now });
+          result[code] = parsed;
+          break;
+        } catch {
+          /* next */
+        }
+      }
     }
   }
   return result;

@@ -381,14 +381,20 @@ const EN: Record<string, string> = {
 const BUILTIN_PACKS: Record<string, Record<string, string>> = { en: EN };
 let _externalPacks: Record<string, Record<string, string>> = {};
 
+function normalizeLang(lang: string) {
+  const normalized = lang.trim().replace(/_/g, "-");
+  return normalized.toLowerCase() === "zh-cn" ? "zh-CN" : normalized.toLowerCase() === "ru" ? "ru" : normalized.toLowerCase() === "en" ? "en" : normalized.toLowerCase() === "fa" ? "fa" : normalized;
+}
+
 export function setTranslations(translations: Record<string, Record<string, unknown>> | undefined) {
   if (!translations) { _externalPacks = {}; return; }
   const packs: Record<string, Record<string, string>> = {};
   for (const [lang, pack] of Object.entries(translations)) {
-    if (lang === "ru") continue;
+    const normalizedLang = normalizeLang(lang);
+    if (normalizedLang === "ru") continue;
     const flat: Record<string, string> = {};
     flattenObj(pack, "", flat);
-    packs[lang] = flat;
+    packs[normalizedLang] = flat;
   }
   _externalPacks = packs;
 }
@@ -403,13 +409,14 @@ function flattenObj(obj: Record<string, unknown>, prefix: string, out: Record<st
 
 export function t(key: string, lang = "ru", vars?: Record<string, string | number>): string {
   let val: string | undefined;
-  if (lang !== "ru") {
-    const extPack = _externalPacks[lang];
+  const normalizedLang = normalizeLang(lang);
+  if (normalizedLang !== "ru") {
+    const extPack = _externalPacks[normalizedLang];
     if (extPack) {
       val = extPack[`bot.${key}`] ?? extPack[key];
     }
     if (!val) {
-      const builtIn = BUILTIN_PACKS[lang];
+      const builtIn = BUILTIN_PACKS[normalizedLang];
       if (builtIn) val = builtIn[key];
     }
   }
