@@ -284,7 +284,7 @@
       "selected_count": "انتخاب شده: {count}",
       "remove": "حذف",
       "add": "+ افزودن",
-      "hwid_devices": "دستگاه‌های HWID",
+      "hwid_devices": "دستگاه‌های HWID ({count})",
       "hwid_limit": "/ محدودیت:",
       "loading_short": "در حال بارگیری…",
       "no_registered_devices": "هیچ دستگاهی ثبت نشده است",

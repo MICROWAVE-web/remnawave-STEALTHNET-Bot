@@ -7,23 +7,19 @@
  */
 
 import { readFileSync } from "fs";
-import { fileURLToPath } from "url";
-import { dirname, resolve } from "path";
+import { getLocaleCandidatePaths } from "./lang-pack-paths.js";
 
 let _ruCache: Record<string, unknown> | null = null;
 
 function loadFrontendRu(): Record<string, unknown> {
   if (_ruCache) return _ruCache;
-  const dir = dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    resolve(dir, "ru.json"),
-    resolve(dir, "../../../frontend/src/i18n/locales/ru.json"),
-  ];
-  for (const p of candidates) {
+  for (const path of getLocaleCandidatePaths("ru")) {
     try {
-      _ruCache = JSON.parse(readFileSync(p, "utf-8"));
-      return _ruCache!;
-    } catch { /* next */ }
+      _ruCache = JSON.parse(readFileSync(path, "utf-8"));
+      return _ruCache;
+    } catch {
+      /* next */
+    }
   }
   return {};
 }

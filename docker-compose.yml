@@ -31,8 +31,8 @@ services:
   # API не был доступен с внешних интерфейсов.
   api:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: stealthnet-api
     restart: unless-stopped
     ports:

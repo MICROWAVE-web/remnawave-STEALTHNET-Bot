@@ -1,7 +1,6 @@
 import { readFileSync } from "fs";
-import { dirname, resolve } from "path";
-import { fileURLToPath } from "url";
 import { prisma } from "../db.js";
+import { getLocaleCandidatePaths } from "../i18n/lang-pack-paths.js";
 
 const BUNDLED_LANGUAGE_CODES = ["en", "fa", "zh-CN"] as const;
 
@@ -63,16 +62,10 @@ async function seedLanguagePack(code: string) {
   if (existing) return;
 
   try {
-    const dir = dirname(fileURLToPath(import.meta.url));
-    const candidates = [
-      resolve(dir, `../i18n/${code}.json`),
-      resolve(dir, `../../../frontend/src/i18n/locales/${code}.json`),
-    ];
-
     let data: string | null = null;
-    for (const p of candidates) {
+    for (const path of getLocaleCandidatePaths(code)) {
       try {
-        data = readFileSync(p, "utf-8");
+        data = readFileSync(path, "utf-8");
         break;
       } catch {
         /* next */

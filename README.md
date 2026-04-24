@@ -132,6 +132,11 @@ Estimated configurations for running all services (API, frontend, bot, Nginx, Po
 | **nginx**    | Nginx + Certbot                                        | Reverse proxy, SSL, static, gzip                                        |
 | **postgres** | PostgreSQL 16                                          | Data storage                                                            |
 
+Localization source of truth:
+- Bundled locale JSON files live only in `frontend/src/i18n/locales/`.
+- Backend reads the same files for seed data and translation keys.
+- In Docker, these locale files are copied into the API image during build.
+
 ---
 
 ## ✨ Features
@@ -480,6 +485,7 @@ remnawave-STEALTHNET-Bot/
 │   ├── src/
 │   │   ├── pages/            # Pages (admin + cabinet)
 │   │   ├── components/       # Reusable components
+│   │   ├── i18n/locales/     # Single source of truth for bundled translations
 │   │   └── ...
 │   └── ...
 ├── nginx/                    # Nginx configs
