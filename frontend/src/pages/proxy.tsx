@@ -457,11 +457,22 @@ cd /opt/proxy-node && docker compose up -d --build`
         </div>
         <div>
           {loading ? (
-            <p className="text-muted-foreground py-8 text-center">Загрузка…</p>
+            <div className="flex flex-col items-center justify-center gap-3 py-10">
+              <Loader2 className="h-7 w-7 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">Загрузка…</p>
+            </div>
           ) : nodes.length === 0 ? (
-            <p className="text-muted-foreground py-8 text-center">
-              Нет нод. Нажмите «Добавить прокси», скопируйте docker-compose на сервер и запустите контейнер.
-            </p>
+            <div className="flex flex-col items-center justify-center text-center py-10">
+              <div className="h-16 w-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
+                <Server className="h-8 w-8 text-muted-foreground/60" />
+              </div>
+              <h3 className="text-base font-semibold tracking-tight">Нод пока нет</h3>
+              <p className="text-sm text-muted-foreground mt-1 max-w-md">Нажмите «Добавить прокси», скопируйте docker-compose на сервер и запустите контейнер.</p>
+              <Button className="mt-4 gap-1.5 rounded-xl" onClick={() => { setAddOpen(true); setAddResult(null); }}>
+                <Plus className="h-4 w-4" />
+                Добавить прокси
+              </Button>
+            </div>
           ) : (
             <div className="rounded-2xl border border-white/5 overflow-hidden">
               <div className="overflow-x-auto">

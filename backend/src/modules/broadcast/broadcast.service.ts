@@ -10,7 +10,7 @@ import { join } from "node:path";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../db.js";
 import { getSystemConfig } from "../client/client.service.js";
-import { sendEmail } from "../mail/mail.service.js";
+import { sendEmail, isMailConfigured, mailConfigFromSystem } from "../mail/mail.service.js";
 import { proxyFetch } from "../proxy-util/proxy-fetch.js";
 import { getProxyUrl } from "../proxy-util/get-proxy-url.js";
 
@@ -119,15 +119,7 @@ function isValidEmail(s: string): boolean {
 
 // Готовит SMTP-конфиг, тему и HTML-тело письма (1-в-1 как email-ветка runBroadcast).
 function buildEmailParts(config: Awaited<ReturnType<typeof getSystemConfig>>, subject: string | undefined, message: string, attachment: BroadcastAttachment | undefined) {
-  const smtpConfig = {
-    host: config.smtpHost || "",
-    port: config.smtpPort ?? 587,
-    secure: config.smtpSecure ?? false,
-    user: config.smtpUser ?? null,
-    password: config.smtpPassword ?? null,
-    fromEmail: config.smtpFromEmail ?? null,
-    fromName: config.smtpFromName ?? null,
-  };
+  const smtpConfig = mailConfigFromSystem(config);
   const serviceName = config.serviceName || "Сервис";
   const subj = subject?.trim() || `Сообщение от ${serviceName}`;
   const html = message.trim().replace(/\n/g, "<br>\n");
@@ -139,7 +131,7 @@ function buildEmailParts(config: Awaited<ReturnType<typeof getSystemConfig>>, su
 export async function sendDirectEmail(to: string, subject: string | undefined, message: string, attachment?: BroadcastAttachment): Promise<{ ok: boolean; error?: string }> {
   const config = await getSystemConfig();
   const { smtpConfig, subj, htmlBody, emailAttachments } = buildEmailParts(config, subject, message, attachment);
-  if (!smtpConfig.host || !smtpConfig.fromEmail) return { ok: false, error: "Не настроен SMTP (Настройки → Почта)" };
+  if (!isMailConfigured(smtpConfig)) return { ok: false, error: "Не настроен провайдер почты (Настройки → Почта)" };
   const send = await sendEmail(smtpConfig, to, subj, htmlBody, emailAttachments);
   return send.ok ? { ok: true } : { ok: false, error: send.error };
 }
@@ -219,7 +211,7 @@ export function startListSendJob(recipients: string[], message: string, extras?:
       // ── EMAIL ──
       if (channel === "email") {
         const { smtpConfig, subj, htmlBody, emailAttachments } = buildEmailParts(config, extras?.subject, message, extras?.attachment);
-        if (!smtpConfig.host || !smtpConfig.fromEmail) {
+        if (!isMailConfigured(smtpConfig)) {
           job.failed = ids.length;
           job.errors.push({ telegramId: "—", error: "Не настроен SMTP (Настройки → Почта)" });
           return;
@@ -835,16 +827,8 @@ export async function runBroadcast(options: {
   if (doEmail) {
     progress.currentChannel = "email";
     report();
-    const smtpConfig = {
-      host: config.smtpHost || "",
-      port: config.smtpPort ?? 587,
-      secure: config.smtpSecure ?? false,
-      user: config.smtpUser ?? null,
-      password: config.smtpPassword ?? null,
-      fromEmail: config.smtpFromEmail ?? null,
-      fromName: config.smtpFromName ?? null,
-    };
-    if (!smtpConfig.host || !smtpConfig.fromEmail) {
+    const smtpConfig = mailConfigFromSystem(config);
+    if (!isMailConfigured(smtpConfig)) {
       result.errors.push("Email: не настроен SMTP (Настройки → Платежи / Почта)");
       result.ok = false;
     } else {

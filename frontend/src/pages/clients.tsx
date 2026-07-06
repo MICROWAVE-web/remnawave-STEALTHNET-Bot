@@ -97,6 +97,7 @@ export function ClientsPage() {
   const [bulkBusy, setBulkBusy] = useState<BulkClientAction | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkResult, setBulkResult] = useState<{ ok: number; failed: number } | null>(null);
+  const [remnaBulkBusy, setRemnaBulkBusy] = useState<string | null>(null);
   // optional inputs
   const [bulkAmount, setBulkAmount] = useState("");
   const [bulkReason, setBulkReason] = useState("");
@@ -122,6 +123,21 @@ export function ClientsPage() {
   // ─── Bulk-actions helpers ─────────────────────────────────────────────
   const allRowIds = (data?.items ?? []).map((c) => c.id);
   const allSelected = allRowIds.length > 0 && allRowIds.every((id) => selectedIds.has(id));
+
+  // Массовые операции напрямую в Remnawave (API 2.8 /users/bulk/*): маппим выбранных клиентов → remnawaveUuid.
+  const runRemnaBulk = async (action: "reset-traffic" | "revoke") => {
+    const uuids = (data?.items ?? []).filter((c) => selectedIds.has(c.id) && c.remnawaveUuid).map((c) => c.remnawaveUuid as string);
+    if (uuids.length === 0) { setBulkError("У выбранных клиентов нет VPN-подписки (remnawaveUuid)."); setBulkResult(null); return; }
+    const label = action === "reset-traffic" ? "Сбросить трафик" : "Перевыпустить подписку (revoke)";
+    if (!confirm(`${label} у ${uuids.length} клиент(ов) в Remnawave?`)) return;
+    setRemnaBulkBusy(action); setBulkError(null); setBulkResult(null);
+    try {
+      await api.remnaUsersBulk(token, action, uuids);
+      setBulkResult({ ok: uuids.length, failed: 0 });
+      await loadClients();
+    } catch (e) { setBulkError(e instanceof Error ? e.message : "Ошибка массовой операции Remnawave"); }
+    finally { setRemnaBulkBusy(null); }
+  };
   function toggleId(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -481,6 +497,27 @@ export function ClientsPage() {
                 {bulkBusy === "mark_reachable" ? <Loader2 className="h-3 w-3 animate-spin" /> : <MailCheck className="h-3 w-3" />}
                 TG ✓
               </Button>
+              <div className="w-px h-5 bg-white/10 mx-0.5 self-center" />
+              <Button
+                size="sm" variant="outline"
+                onClick={() => runRemnaBulk("reset-traffic")}
+                disabled={remnaBulkBusy !== null}
+                className="h-8 rounded-lg gap-1.5 text-xs"
+                title="Сбросить трафик в Remnawave"
+              >
+                {remnaBulkBusy === "reset-traffic" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
+                Трафик 0
+              </Button>
+              <Button
+                size="sm" variant="outline"
+                onClick={() => runRemnaBulk("revoke")}
+                disabled={remnaBulkBusy !== null}
+                className="h-8 rounded-lg gap-1.5 text-xs"
+                title="Перевыпустить подписку (revoke) — старая ссылка перестанет работать"
+              >
+                {remnaBulkBusy === "revoke" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                Revoke
+              </Button>
             </div>
           </div>
 
@@ -616,7 +653,7 @@ export function ClientsPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
+                        <div className="flex items-center justify-end gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
                           <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-foreground/[0.06] dark:hover:bg-white/10 hover:text-foreground" onClick={(e) => { e.stopPropagation(); openEdit(c); }} title="Редактировать">
                             <Pencil className="h-4 w-4" />
                           </Button>

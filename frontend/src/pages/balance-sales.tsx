@@ -170,18 +170,25 @@ export function BalanceSalesPage() {
         )}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-white/5">
-              <tr className="text-left">
-                <th className="px-4 py-3 font-medium text-muted-foreground">Дата</th>
-                <th className="px-4 py-3 font-medium text-muted-foreground">Клиент</th>
-                <th className="px-4 py-3 font-medium text-muted-foreground">Тариф</th>
-                <th className="px-4 py-3 font-medium text-muted-foreground text-right">Сумма</th>
+            <thead>
+              <tr className="text-left border-b border-white/10">
+                <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Дата</th>
+                <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Клиент</th>
+                <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Тариф</th>
+                <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground text-right">Сумма</th>
               </tr>
             </thead>
             <tbody>
               {!loading && items.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">Ничего не найдено</td>
+                  <td colSpan={4} className="px-4 py-12 text-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="h-14 w-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
+                        <ShoppingCart className="h-7 w-7 text-muted-foreground/60" />
+                      </div>
+                      <p className="text-sm text-muted-foreground">Ничего не найдено — измените фильтры или период.</p>
+                    </div>
+                  </td>
                 </tr>
               )}
               {items.map((it) => (

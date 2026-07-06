@@ -74,10 +74,10 @@ export function StealthTickets() {
 
       {loading ? (
         <div className="flex justify-center py-10">
-          <Loader2 className="h-6 w-6 animate-spin text-rose-500" />
+          <Loader2 className="h-6 w-6 animate-spin text-saccent-500" />
         </div>
       ) : err ? (
-        <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-300">
+        <div className="rounded-2xl border border-saccent-500/30 bg-saccent-500/10 p-4 text-sm text-saccent-300">
           {err}
         </div>
       ) : !items || items.length === 0 ? (

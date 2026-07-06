@@ -107,22 +107,29 @@ export function AdminDiagnosticsPage() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-6">
-      <div className="mb-6 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Activity className="h-6 w-6 text-emerald-500" />
-          <h1 className="text-2xl font-bold">Диагностика</h1>
+    <div className="space-y-5 px-4 sm:px-6 md:px-8 pt-6 pb-10 relative">
+      <div className="fixed -z-10 bg-primary/15 blur-[120px] top-[-50px] left-[-50px] w-[300px] h-[300px] rounded-full pointer-events-none" />
+      <div className="fixed -z-10 bg-violet-500/10 blur-[100px] top-[20%] right-[-50px] w-[250px] h-[250px] rounded-full pointer-events-none" />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between bg-background/40 backdrop-blur-3xl border border-white/10 p-6 rounded-[2rem] shadow-2xl">
+        <div className="flex items-center gap-4">
+          <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary/20 to-violet-500/20 flex items-center justify-center shadow-inner border border-white/10">
+            <Activity className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/60">Диагностика</h1>
+            <p className="text-sm text-muted-foreground mt-1">Health-проверки, cron-монитор и логи API-контейнера.</p>
+          </div>
         </div>
-        <Button onClick={handleLogoutAll} variant="outline" size="sm" className="gap-1.5 text-red-600 dark:text-red-400 border-red-500/30 hover:bg-red-500/10">
+        <Button onClick={handleLogoutAll} variant="outline" size="sm" className="gap-1.5 rounded-xl text-red-600 dark:text-red-400 border-red-500/30 hover:bg-red-500/10">
           <ShieldOff className="h-4 w-4" />
-          Logout all admins
+          Разлогинить всех админов
         </Button>
       </div>
 
-      {error ? <div className="rounded-lg border border-red-500/30 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-700 dark:text-red-300 mb-4">{error}</div> : null}
+      {error ? <div className="rounded-2xl border border-red-500/30 bg-red-500/10 backdrop-blur-md px-4 py-3 text-sm text-red-500 dark:text-red-400">{error}</div> : null}
 
       {/* Health */}
-      <Card className="mb-4">
+      <Card className="bg-background/60 backdrop-blur-3xl border-white/10 rounded-[2rem] shadow-xl">
         <CardContent className="p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
@@ -163,7 +170,7 @@ export function AdminDiagnosticsPage() {
       </Card>
 
       {/* Cron monitor */}
-      <Card className="mb-4">
+      <Card className="bg-background/60 backdrop-blur-3xl border-white/10 rounded-[2rem] shadow-xl">
         <CardContent className="p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
@@ -220,7 +227,7 @@ export function AdminDiagnosticsPage() {
       </Card>
 
       {/* Logs viewer */}
-      <Card>
+      <Card className="bg-background/60 backdrop-blur-3xl border-white/10 rounded-[2rem] shadow-xl">
         <CardContent className="p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-2">

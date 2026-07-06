@@ -70,9 +70,9 @@ export function AdminAntiFraudPage() {
           </div>
           <div>
             <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground via-rose-500/80 to-foreground/60">
-              Anti-fraud signals
+              Антифрод-сигналы
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">Подозрительные паттерны в данных. Read-only — ничего не блокирует автоматически.</p>
+            <p className="text-sm text-muted-foreground mt-1">Подозрительные паттерны в данных. Только просмотр — ничего не блокирует автоматически.</p>
           </div>
         </div>
         <Button variant="outline" size="sm" onClick={load} disabled={loading} className="rounded-xl gap-2">

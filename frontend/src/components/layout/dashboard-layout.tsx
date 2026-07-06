@@ -8,7 +8,7 @@ import {
   Network, ShieldAlert, Key, Map, Video, Languages, Gift, Sparkles, Rocket, Bot,
   ChevronRight, Check, ShoppingBag,
   Activity, Inbox, ClipboardList, TrendingUp, Mail,
-  RefreshCw,
+  RefreshCw, Layers, FileCode2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAdminLanguageSync } from "@/i18n/use-language-sync";
@@ -20,18 +20,19 @@ import { cn } from "@/lib/utils";
 import { api, type AdminNotificationCounters } from "@/lib/api";
 import { InboxBell } from "@/components/inbox-bell";
 
-const PANEL_VERSION = "5.1.0";
+const PANEL_VERSION = "5.2.0";
 const GITHUB_URL = "https://github.com/systemmaster1200-eng/remnawave-STEALTHNET-Bot";
 
 // пункт меню может быть защищён action'ом
 // вместо обычной секции — для гранулярных прав менеджеров (например, «Продажи через баланс»).
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard; section: string; category: string; requiredAction?: string };
 
-const CATEGORY_ORDER = ["overview", "management", "subscription", "tools", "settings"];
+const CATEGORY_ORDER = ["overview", "management", "infrastructure", "subscription", "tools", "settings"];
 
 const CATEGORY_I18N: Record<string, string> = {
   overview: "admin.nav.category_overview",
   management: "admin.nav.category_management",
+  infrastructure: "Инфраструктура",
   subscription: "admin.nav.category_subscription",
   tools: "admin.nav.category_tools",
   settings: "admin.nav.category_settings",
@@ -64,6 +65,12 @@ function useNavSections(): NavItem[] {
     { to: "/admin/auto-renew", label: "🔄 Автосписание", icon: RefreshCw, section: "auto-renew", category: "subscription" },
     { to: "/admin/promo", label: t("admin.nav.promo_links"), icon: Megaphone, section: "promo", category: "subscription" },
     { to: "/admin/promo-codes", label: t("admin.nav.promo_codes"), icon: Tag, section: "promo-codes", category: "subscription" },
+    // Remnawave инфра-управление (ADMIN-only): ноды / сквады / хосты / config-профили.
+    { to: "/admin/remna-nodes", label: "Ноды", icon: Server, section: "infra-nodes", category: "infrastructure" },
+    { to: "/admin/remna-squads", label: "Сквады", icon: Layers, section: "infra-squads", category: "infrastructure" },
+    { to: "/admin/remna-hosts", label: "Хосты", icon: Network, section: "infra-hosts", category: "infrastructure" },
+    { to: "/admin/remna-profiles", label: "Config-профили", icon: FileCode2, section: "infra-profiles", category: "infrastructure" },
+    { to: "/admin/remna-sub-templates", label: "Шаблоны подписки", icon: FileText, section: "infra-templates", category: "infrastructure" },
     { to: "/admin/marketing", label: t("admin.nav.marketing"), icon: Target, section: "marketing", category: "subscription" },
     { to: "/admin/referral-network", label: t("admin.nav.referral_network"), icon: Network, section: "referral-network", category: "subscription" },
     // детальная страница рефералки по клиенту (поиск, реферер, заработок, кредиты).
@@ -376,14 +383,22 @@ export function DashboardLayout() {
                     const seg = location.pathname.replace(/^\/admin\/?/, "").split("/")[0] || "dashboard";
                     const map: Record<string, string> = {
                       dashboard: "Главная", analytics: "Аналитика", "sales-report": "Отчёт продаж",
+                      "business-analytics": "Бизнес-аналитика", "anti-fraud": "Антифрод",
+                      "balance-sales": "Продажи через баланс", "bot-conversations": "Активность клиентов",
+                      "remna-nodes": "Ноды", "remna-squads": "Сквады", "remna-hosts": "Хосты", "remna-profiles": "Config-профили",
+                      "remna-sub-templates": "Шаблоны подписки",
                       "traffic-abuse": "Аномалии трафика", "geo-map": "Карта", clients: "Клиенты",
-                      proxy: "Прокси", singbox: "Singbox", backup: "Бэкапы", tickets: "Тикеты",
+                      proxy: "Прокси", singbox: "Sing-box", backup: "Бэкапы", tickets: "Тикеты",
+                      withdrawals: "Заявки на вывод", trials: "Триалы", "auto-renew": "Автосписание",
                       tariffs: "Тарифы", promo: "Промо-ссылки", "promo-codes": "Промокоды",
-                      marketing: "Маркетинг", "referral-network": "Реф. сеть",
+                      marketing: "Маркетинг", "referral-network": "Реф. сеть", referrals: "Рефералка",
                       "secondary-subscriptions": "Подписки", "video-instructions": "Видео",
-                      broadcast: "Рассылки", "auto-broadcast": "Авто-рассылки", contests: "Контесты",
-                      "tour-constructor": "Тур", "promo-vpn": "Promo VPN", settings: "Настройки",
+                      broadcast: "Рассылки", "auto-broadcast": "Авто-рассылки", contests: "Конкурсы",
+                      "tour-constructor": "Тур", "promo-vpn": "Продвижение VPN", marketplace: "Маркетплейс",
+                      settings: "Настройки",
                       languages: "Языки", admins: "Менеджеры", "api-keys": "API ключи",
+                      antibot: "Антибот", diagnostics: "Диагностика", "email-templates": "Email-шаблоны",
+                      "bot-messages": "Тексты бота", "webhook-inbox": "Webhook inbox", audit: "Аудит-лог",
                       "change-password": "Смена пароля",
                     };
                     return map[seg] ?? seg;

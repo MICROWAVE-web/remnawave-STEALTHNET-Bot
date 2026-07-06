@@ -10,24 +10,39 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth";
 import { api } from "@/lib/api";
 import type { WithdrawalRequestRecord } from "@/lib/api";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Check, X, RefreshCw, Copy } from "lucide-react";
+import { Loader2, Check, X, RefreshCw, Copy, Wallet, Clock3, Inbox } from "lucide-react";
 import { fmtMsk } from "@/lib/datetime";
+import { cn } from "@/lib/utils";
+import { motion } from "framer-motion";
 
 type StatusFilter = "ALL" | "PENDING" | "APPROVED" | "REJECTED";
 
 const STATUS_LABEL: Record<WithdrawalRequestRecord["status"], string> = {
-  PENDING: "⏳ Ожидает",
-  APPROVED: "✅ Одобрено",
-  REJECTED: "❌ Отклонено",
+  PENDING: "Ожидает",
+  APPROVED: "Одобрено",
+  REJECTED: "Отклонено",
 };
 
-const STATUS_COLOR: Record<WithdrawalRequestRecord["status"], string> = {
-  PENDING: "bg-amber-500/20 text-amber-300 border-amber-500/30",
-  APPROVED: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
-  REJECTED: "bg-rose-500/20 text-rose-300 border-rose-500/30",
+const STATUS_CHIP: Record<WithdrawalRequestRecord["status"], string> = {
+  PENDING: "bg-amber-500/15 text-amber-500 dark:text-amber-400 border-amber-500/30",
+  APPROVED: "bg-emerald-500/15 text-emerald-500 dark:text-emerald-400 border-emerald-500/30",
+  REJECTED: "bg-rose-500/15 text-rose-500 dark:text-rose-400 border-rose-500/30",
 };
+
+const STATUS_DOT: Record<WithdrawalRequestRecord["status"], string> = {
+  PENDING: "bg-amber-400",
+  APPROVED: "bg-emerald-400",
+  REJECTED: "bg-rose-400",
+};
+
+const FILTERS: { key: StatusFilter; label: string }[] = [
+  { key: "PENDING", label: "Ожидают" },
+  { key: "APPROVED", label: "Одобрены" },
+  { key: "REJECTED", label: "Отклонены" },
+  { key: "ALL", label: "Все" },
+];
 
 export function WithdrawalsPage() {
   const { state } = useAuth();
@@ -104,107 +119,128 @@ export function WithdrawalsPage() {
   };
 
   return (
-    <div className="space-y-4 p-4 sm:p-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">💰 Заявки на вывод</h1>
-          <p className="text-sm text-muted-foreground mt-1">USDT TRC20 · Минимальная сумма заявки 3000₽</p>
+    <div className="space-y-5 px-4 sm:px-6 md:px-8 pt-6 pb-10 relative">
+      <div className="fixed -z-10 bg-primary/15 blur-[120px] top-[-50px] left-[-50px] w-[300px] h-[300px] rounded-full pointer-events-none" />
+      <div className="fixed -z-10 bg-violet-500/10 blur-[100px] top-[20%] right-[-50px] w-[250px] h-[250px] rounded-full pointer-events-none" />
+
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between bg-background/40 backdrop-blur-3xl border border-white/10 p-6 rounded-[2rem] shadow-2xl"
+      >
+        <div className="flex items-center gap-4">
+          <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary/20 to-violet-500/20 flex items-center justify-center shadow-inner border border-white/10">
+            <Wallet className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/60">Заявки на вывод</h1>
+            <p className="text-sm text-muted-foreground mt-1">USDT TRC20 · Минимальная сумма заявки 3000₽ · reject возвращает баланс автоматически.</p>
+          </div>
         </div>
-        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+        <Button variant="outline" size="sm" onClick={load} disabled={loading} className="gap-1.5 rounded-xl">
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           Обновить
         </Button>
-      </div>
+      </motion.div>
 
-      <div className="flex flex-wrap gap-2">
-        {(["PENDING", "APPROVED", "REJECTED", "ALL"] as StatusFilter[]).map((s) => (
-          <Button
-            key={s}
-            variant={filter === s ? "default" : "outline"}
-            size="sm"
-            onClick={() => setFilter(s)}
+      <div className="flex flex-wrap gap-1.5 bg-background/60 backdrop-blur-3xl border border-white/10 rounded-2xl p-1.5 w-fit shadow-xl">
+        {FILTERS.map((f) => (
+          <button
+            key={f.key}
+            onClick={() => setFilter(f.key)}
+            className={cn(
+              "px-3.5 py-1.5 rounded-xl text-sm font-medium transition-all",
+              filter === f.key
+                ? "bg-primary text-primary-foreground shadow"
+                : "text-muted-foreground hover:text-foreground hover:bg-foreground/5"
+            )}
           >
-            {s === "ALL" ? "Все" : STATUS_LABEL[s as WithdrawalRequestRecord["status"]]}
-          </Button>
+            {f.label}
+          </button>
         ))}
       </div>
 
       {error && (
-        <Card className="border-rose-500/30 bg-rose-500/10">
-          <CardContent className="p-4">
-            <p className="text-rose-300 text-sm">❌ {error}</p>
-          </CardContent>
-        </Card>
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 backdrop-blur-md px-4 py-3 text-sm text-red-500 dark:text-red-400">{error}</div>
       )}
 
       {loading ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
+        <Card className="bg-background/60 backdrop-blur-3xl border-white/10 rounded-[2rem] py-16 shadow-xl flex flex-col items-center justify-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Загружаем заявки…</p>
+        </Card>
       ) : items.length === 0 ? (
-        <Card className="border-white/10">
-          <CardContent className="p-8 text-center text-muted-foreground">
-            Нет заявок {filter !== "ALL" ? `(статус: ${STATUS_LABEL[filter as WithdrawalRequestRecord["status"]]})` : ""}
-          </CardContent>
+        <Card className="bg-background/60 backdrop-blur-3xl border-white/10 rounded-[2rem] p-12 shadow-xl">
+          <div className="flex flex-col items-center justify-center text-center">
+            <div className="h-16 w-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
+              <Inbox className="h-8 w-8 text-muted-foreground/60" />
+            </div>
+            <h3 className="text-lg font-semibold tracking-tight">Нет заявок</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              {filter === "ALL" ? "Заявок на вывод пока не было." : `Со статусом «${filter === "PENDING" ? "Ожидает" : filter === "APPROVED" ? "Одобрено" : "Отклонено"}» ничего нет.`}
+            </p>
+          </div>
         </Card>
       ) : (
-        <div className="space-y-3">
-          {items.map((item) => (
-            <Card key={item.id} className="border-white/10 overflow-hidden">
-              <CardContent className="p-4 sm:p-5 space-y-3">
+        <div className="grid gap-4">
+          {items.map((item, idx) => (
+            <motion.div key={item.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(idx * 0.03, 0.3) }} whileHover={{ y: -2 }}>
+              <Card className="bg-background/60 backdrop-blur-3xl border-white/10 rounded-[2rem] p-5 shadow-xl space-y-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`${STATUS_COLOR[item.status]} border rounded-full px-2.5 py-0.5 text-xs font-semibold`}>
+                      <span className={cn("inline-flex items-center gap-1.5 border rounded-full px-2.5 py-0.5 text-xs font-semibold", STATUS_CHIP[item.status])}>
+                        <span className={cn("h-1.5 w-1.5 rounded-full", STATUS_DOT[item.status])} />
                         {STATUS_LABEL[item.status]}
                       </span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                        <Clock3 className="h-3 w-3" />
                         {fmtMsk(item.createdAt)}
                       </span>
                     </div>
-                    <p className="text-2xl font-bold">{item.amount.toFixed(2)} ₽</p>
+                    <p className="text-2xl font-bold tracking-tight">{item.amount.toFixed(2)} ₽</p>
                   </div>
                   {item.status === "PENDING" && (
                     <div className="flex gap-2">
                       <Button
                         size="sm"
-                        variant="default"
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                        className="gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white"
                         onClick={() => handleApprove(item.id)}
                         disabled={processing === item.id}
                       >
-                        {processing === item.id ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Check className="h-4 w-4 mr-2" />}
+                        {processing === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                         Одобрить
                       </Button>
                       <Button
                         size="sm"
                         variant="destructive"
+                        className="gap-1.5 rounded-xl"
                         onClick={() => handleReject(item.id)}
                         disabled={processing === item.id}
                       >
-                        <X className="h-4 w-4 mr-2" />
+                        <X className="h-4 w-4" />
                         Отклонить
                       </Button>
                     </div>
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm rounded-2xl border border-white/10 bg-foreground/[0.02] p-4">
                   <div className="space-y-1">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Клиент</p>
+                    <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Клиент</p>
                     <p className="font-medium">{clientLabel(item.client)}</p>
                     {item.client.telegramId && (
                       <p className="text-xs text-muted-foreground">TG ID: <code>{item.client.telegramId}</code></p>
                     )}
                   </div>
                   <div className="space-y-1">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Кошелёк TRC20</p>
+                    <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Кошелёк TRC20</p>
                     <div className="flex items-center gap-2">
-                      <code className="text-xs bg-muted/40 px-2 py-1 rounded break-all">{item.walletTrc20}</code>
+                      <code className="text-xs bg-foreground/5 border border-white/10 px-2 py-1 rounded-lg break-all">{item.walletTrc20}</code>
                       <Button
                         size="icon"
                         variant="ghost"
-                        className="h-7 w-7 shrink-0"
+                        className="h-7 w-7 shrink-0 rounded-lg"
                         onClick={() => copyText(item.walletTrc20)}
                         title="Скопировать кошелёк"
                       >
@@ -216,7 +252,7 @@ export function WithdrawalsPage() {
 
                 {item.adminComment && (
                   <div className="text-sm pt-2 border-t border-white/10">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Комментарий админа</p>
+                    <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mb-1">Комментарий админа</p>
                     <p className="text-muted-foreground">{item.adminComment}</p>
                   </div>
                 )}
@@ -226,8 +262,8 @@ export function WithdrawalsPage() {
                     Обработано: {fmtMsk(item.processedAt)}
                   </p>
                 )}
-              </CardContent>
-            </Card>
+              </Card>
+            </motion.div>
           ))}
         </div>
       )}

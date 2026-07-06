@@ -601,7 +601,8 @@ export async function tariffConversionPreview(
 ): Promise<{
   willConvert: boolean;
   /** extend — тот же тариф (продление, дни складываются); convert — смена тарифа. */
-  mode?: "extend" | "convert";
+  mode?: "extend" | "convert" | "replace";
+  othersToRemove?: number;
   subscription?: { id: string; index: number; tariffName: string | null; expireAt: string | null; isTrial: boolean };
   remainingDays?: number;
   convertedDays?: number;

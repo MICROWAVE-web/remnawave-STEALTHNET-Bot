@@ -78,8 +78,8 @@ export function StealthReferral() {
     <div className="px-4 pt-2 space-y-4 pb-2">
       {/* Header card */}
       <div className="flex items-center gap-3 px-1">
-        <div className="h-10 w-10 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center">
-          <Gift className="h-5 w-5 text-rose-400" />
+        <div className="h-10 w-10 rounded-xl bg-saccent-500/15 border border-saccent-500/30 flex items-center justify-center">
+          <Gift className="h-5 w-5 text-saccent-400" />
         </div>
         <div>
           <h2 className="text-lg font-bold tracking-tight">Реферальная система</h2>
@@ -88,10 +88,10 @@ export function StealthReferral() {
       </div>
 
       {/* KPI card with red border */}
-      <div className="relative overflow-hidden rounded-3xl border border-rose-500/40 bg-zinc-900/40 p-5">
+      <div className="relative overflow-hidden rounded-3xl border border-saccent-500/40 bg-zinc-900/40 p-5">
         {/* Decorative watermark */}
         <div
-          className="absolute -right-6 -top-6 text-rose-500/[0.06] font-bold text-[140px] leading-none pointer-events-none select-none"
+          className="absolute -right-6 -top-6 text-saccent-500/[0.06] font-bold text-[140px] leading-none pointer-events-none select-none"
           style={{ fontFamily: '"Syncopate", sans-serif' }}
         >
           V
@@ -99,7 +99,7 @@ export function StealthReferral() {
 
         <div className="relative grid grid-cols-2 gap-4">
           <div>
-            <p className="text-[10px] font-bold tracking-[0.18em] uppercase text-rose-400/80">Накоплено</p>
+            <p className="text-[10px] font-bold tracking-[0.18em] uppercase text-saccent-400/80">Накоплено</p>
             <div className="mt-1.5 flex items-baseline gap-1.5">
               <span className="text-4xl font-bold tabular-nums">{stats ? fmtMoney(stats.totalEarnings, currency) : (loading ? "…" : "0")}</span>
             </div>
@@ -134,8 +134,8 @@ export function StealthReferral() {
         type="button"
         className="w-full rounded-2xl border border-white/[0.08] bg-zinc-900/40 p-3 flex items-center gap-3 text-left hover:border-white/15 transition"
       >
-        <div className="h-10 w-10 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center shrink-0">
-          <Users className="h-5 w-5 text-rose-400" />
+        <div className="h-10 w-10 rounded-xl bg-saccent-500/15 border border-saccent-500/30 flex items-center justify-center shrink-0">
+          <Users className="h-5 w-5 text-saccent-400" />
         </div>
         <div className="flex-1 min-w-0">
           <h4 className="font-semibold text-sm">Твои друзья</h4>

@@ -1895,6 +1895,7 @@
       "get_code": "Получить код",
       "link_code": "Код привязки",
       "link_code_hint": "Отправьте боту",
+      "link_open_bot": "Открыть Telegram и привязать",
       "link_code_expires": "Код действует 10 минут.",
       "link_email_sent": "Отправлено, проверьте почту.",
       "link_email_error": "Ошибка отправки",
@@ -1935,6 +1936,12 @@
       "transactions_count_many": "транзакций",
       "payment_failed": "Не прошёл",
       "payment_refunded": "Возврат"
+    },
+    "link_prompt": {
+      "title": "Привязать Telegram?",
+      "desc": "Свяжите аккаунт с Telegram-ботом — подписки, баланс и рефералы будут в одном месте, а вход станет проще.",
+      "link": "Привязать Telegram",
+      "later": "Позже"
     },
     "referral": {
       "title": "Рефералы",

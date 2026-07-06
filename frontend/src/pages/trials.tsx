@@ -15,7 +15,9 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Trash2, Pencil, Loader2 } from "lucide-react";
+import { Plus, Trash2, Pencil, Loader2, Gift } from "lucide-react";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 
 type FlatTariff = { id: string; name: string; categoryName: string };
 
@@ -79,75 +81,101 @@ export function TrialsPage() {
   };
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">🎁 Триалы (пробные подписки)</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Несколько триалов, каждый привязан к тарифу. Клиент может активировать каждый — один раз.
-            Когда клиент использует все доступные триалы, кнопка «Получить пробную» в боте скроется.
-          </p>
+    <div className="space-y-5 px-4 sm:px-6 md:px-8 pt-6 pb-10 relative">
+      <div className="fixed -z-10 bg-primary/15 blur-[120px] top-[-50px] left-[-50px] w-[300px] h-[300px] rounded-full pointer-events-none" />
+      <div className="fixed -z-10 bg-violet-500/10 blur-[100px] top-[20%] right-[-50px] w-[250px] h-[250px] rounded-full pointer-events-none" />
+
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between bg-background/40 backdrop-blur-3xl border border-white/10 p-6 rounded-[2rem] shadow-2xl"
+      >
+        <div className="flex items-center gap-4">
+          <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary/20 to-violet-500/20 flex items-center justify-center shadow-inner border border-white/10">
+            <Gift className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/60">Триалы</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Пробные подписки: каждый триал привязан к тарифу, клиент активирует каждый один раз. Когда все использованы — кнопка в боте скрывается.
+            </p>
+          </div>
         </div>
-        <Button onClick={() => setModal("add")} className="gap-2">
+        <Button onClick={() => setModal("add")} className="gap-1.5 rounded-xl">
           <Plus className="h-4 w-4" />
           Добавить триал
         </Button>
-      </div>
+      </motion.div>
 
       {error && (
-        <Card className="p-4 bg-red-500/10 border-red-500/40 text-sm text-red-200">
-          ❌ {error}
-        </Card>
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 backdrop-blur-md px-4 py-3 text-sm text-red-500 dark:text-red-400">{error}</div>
       )}
 
       {loading && (
-        <Card className="p-8 flex items-center justify-center text-muted-foreground gap-2">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Загрузка триалов…
+        <Card className="bg-background/60 backdrop-blur-3xl border-white/10 rounded-[2rem] py-16 shadow-xl flex flex-col items-center justify-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Загружаем триалы…</p>
         </Card>
       )}
 
       {!loading && trials.length === 0 && (
-        <Card className="p-8 text-center text-muted-foreground">
-          Триалов нет. Создайте первый — он появится в боте кнопкой «Получить пробную подписку».
+        <Card className="bg-background/60 backdrop-blur-3xl border-white/10 rounded-[2rem] p-12 shadow-xl">
+          <div className="flex flex-col items-center justify-center text-center">
+            <div className="h-16 w-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
+              <Gift className="h-8 w-8 text-muted-foreground/60" />
+            </div>
+            <h3 className="text-lg font-semibold tracking-tight">Триалов нет</h3>
+            <p className="text-sm text-muted-foreground mt-1">Создайте первый — он появится в боте кнопкой «Получить пробную подписку».</p>
+            <Button onClick={() => setModal("add")} className="mt-4 gap-1.5 rounded-xl">
+              <Plus className="h-4 w-4" />
+              Создать триал
+            </Button>
+          </div>
         </Card>
       )}
 
       {!loading && trials.length > 0 && (
-        <Card className="p-0 overflow-hidden">
+        <Card className="bg-background/60 backdrop-blur-3xl border-white/10 rounded-[2rem] shadow-xl overflow-hidden py-0">
           <table className="w-full text-sm">
-            <thead className="bg-card/40">
-              <tr className="text-left">
-                <th className="px-4 py-3 font-medium">Порядок</th>
-                <th className="px-4 py-3 font-medium">Название</th>
-                <th className="px-4 py-3 font-medium">Тариф</th>
-                <th className="px-4 py-3 font-medium">Дней</th>
-                <th className="px-4 py-3 font-medium">Активен</th>
-                <th className="px-4 py-3 font-medium text-right">Действия</th>
+            <thead>
+              <tr className="text-left border-b border-white/10">
+                <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Порядок</th>
+                <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Название</th>
+                <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Тариф</th>
+                <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Дней</th>
+                <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Статус</th>
+                <th className="px-5 py-3.5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground text-right">Действия</th>
               </tr>
             </thead>
             <tbody>
               {trials.map((t) => (
-                <tr key={t.id} className="border-t border-white/5 hover:bg-white/5">
-                  <td className="px-4 py-3">{t.sortOrder}</td>
-                  <td className="px-4 py-3 font-medium">{t.name}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{t.tariffName ?? "—"}</td>
-                  <td className="px-4 py-3">{t.durationDays}</td>
-                  <td className="px-4 py-3">
+                <tr key={t.id} className="border-t border-white/5 hover:bg-foreground/5 transition-colors">
+                  <td className="px-5 py-3.5 text-muted-foreground">{t.sortOrder}</td>
+                  <td className="px-5 py-3.5 font-medium">{t.name}</td>
+                  <td className="px-5 py-3.5 text-muted-foreground">{t.tariffName ?? "—"}</td>
+                  <td className="px-5 py-3.5">{t.durationDays}</td>
+                  <td className="px-5 py-3.5">
                     <button
                       onClick={() => handleToggleEnabled(t)}
-                      className={`px-2 py-1 rounded text-xs ${t.enabled ? "bg-emerald-500/20 text-emerald-300" : "bg-zinc-500/20 text-zinc-400"}`}
+                      title="Нажмите, чтобы переключить"
+                      className={cn(
+                        "inline-flex items-center gap-1.5 border rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors",
+                        t.enabled
+                          ? "bg-emerald-500/15 text-emerald-500 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25"
+                          : "bg-zinc-500/15 text-zinc-500 dark:text-zinc-400 border-zinc-500/30 hover:bg-zinc-500/25"
+                      )}
                     >
-                      {t.enabled ? "✅ Включен" : "⏸ Выключен"}
+                      <span className={cn("h-1.5 w-1.5 rounded-full", t.enabled ? "bg-emerald-400" : "bg-zinc-400")} />
+                      {t.enabled ? "Включен" : "Выключен"}
                     </button>
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button size="sm" variant="ghost" onClick={() => setModal({ edit: t })} className="gap-1">
-                        <Pencil className="h-3 w-3" /> Редактировать
+                  <td className="px-5 py-3.5 text-right">
+                    <div className="flex justify-end gap-1">
+                      <Button size="icon" variant="ghost" onClick={() => setModal({ edit: t })} className="h-8 w-8 rounded-lg" title="Редактировать">
+                        <Pencil className="h-4 w-4" />
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => handleDelete(t.id)} className="text-red-400 gap-1">
-                        <Trash2 className="h-3 w-3" /> Удалить
+                      <Button size="icon" variant="ghost" onClick={() => handleDelete(t.id)} className="h-8 w-8 rounded-lg text-red-500 dark:text-red-400 hover:bg-red-500/10" title="Удалить">
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </td>
@@ -279,15 +307,21 @@ function TrialFormDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <Card className="w-full max-w-lg p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold">
-          {mode === "add" ? "🎁 Новый триал" : "✏️ Редактировать триал"}
-        </h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={onClose}>
+      <Card className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-background/80 backdrop-blur-3xl border-white/10 rounded-[2rem] p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-white/10 flex items-center justify-center shadow-inner shrink-0">
+            {mode === "add" ? <Plus className="h-5 w-5 text-primary" /> : <Pencil className="h-5 w-5 text-primary" />}
+          </div>
+          <div>
+            <h2 className="text-base font-bold tracking-tight">{mode === "add" ? "Новый триал" : "Редактировать триал"}</h2>
+            <p className="text-xs text-muted-foreground">Источник, длительность и правила конвертации</p>
+          </div>
+        </div>
 
         {err && (
-          <div className="p-2 rounded bg-red-500/10 border border-red-500/40 text-xs text-red-200">
-            ❌ {err}
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-500 dark:text-red-400">
+            {err}
           </div>
         )}
 
@@ -332,7 +366,7 @@ function TrialFormDialog({
             id="trial-tariff"
             value={tariffId}
             onChange={(e) => setTariffId(e.target.value)}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            className="w-full rounded-xl border border-white/10 bg-foreground/[0.03] dark:bg-white/[0.02] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
           >
             {tariffs.length === 0 && <option value="">— Сначала создайте тариф —</option>}
             {tariffs.map((t) => (
@@ -350,7 +384,7 @@ function TrialFormDialog({
               id="trial-squad"
               value={squadUuid}
               onChange={(e) => setSquadUuid(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              className="w-full rounded-xl border border-white/10 bg-foreground/[0.03] dark:bg-white/[0.02] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
             >
               <option value="">— Выберите сквад —</option>
               {squads.map((s) => (
@@ -485,7 +519,7 @@ function TrialFormDialog({
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Бесплатная пробная подписка на стандартный тариф на 3 дня..."
             rows={3}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs"
+            className="w-full rounded-xl border border-white/10 bg-foreground/[0.03] dark:bg-white/[0.02] px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/50"
           />
         </div>
 

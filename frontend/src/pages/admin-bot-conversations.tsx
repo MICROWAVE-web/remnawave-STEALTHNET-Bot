@@ -76,11 +76,11 @@ export function AdminBotConversationsPage() {
     <div className="w-full space-y-4 px-4 sm:px-6 md:px-8 pt-6 pb-10">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between bg-background/40 backdrop-blur-3xl border border-white/10 p-6 rounded-[2rem] shadow-2xl">
         <div className="flex items-center gap-4">
-          <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-emerald-500/20 flex items-center justify-center shadow-inner border border-white/10">
-            <MessageSquare className="h-6 w-6 text-cyan-500" />
+          <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary/20 to-violet-500/20 flex items-center justify-center shadow-inner border border-white/10">
+            <MessageSquare className="h-6 w-6 text-primary" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Активность клиентов</h1>
+            <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/60">Активность клиентов</h1>
             <p className="text-sm text-muted-foreground mt-1">Timeline всех событий по клиенту: оплаты, рассылки, тикеты, действия админа</p>
           </div>
         </div>
@@ -142,10 +142,10 @@ export function AdminBotConversationsPage() {
                         </span>
                         {c.telegramUnreachable && <Mail className="h-3 w-3 text-amber-500" />}
                       </div>
-                      <div className="text-[10px] text-muted-foreground flex items-center gap-2 mt-0.5">
-                        <span title="платежей">💳 {c.counts.payments}</span>
-                        <span title="тикетов">🎫 {c.counts.tickets}</span>
-                        <span title="рассылок">📤 {c.counts.broadcasts}</span>
+                      <div className="text-[10px] text-muted-foreground flex items-center gap-2.5 mt-0.5">
+                        <span title="Платежей" className="inline-flex items-center gap-1"><CreditCard className="h-3 w-3" />{c.counts.payments}</span>
+                        <span title="Тикетов" className="inline-flex items-center gap-1"><Ticket className="h-3 w-3" />{c.counts.tickets}</span>
+                        <span title="Рассылок" className="inline-flex items-center gap-1"><Send className="h-3 w-3" />{c.counts.broadcasts}</span>
                       </div>
                     </div>
                   </div>

@@ -93,8 +93,12 @@ emailTemplatesRouter.post(
     const parsed = previewSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Invalid payload", errors: parsed.error.flatten() });
 
+    const { getSystemConfig: getCfg } = await import("../client/client.service.js");
+    const cfgForVars = await getCfg();
     const exampleVars: Record<string, string> = {};
     for (const v of item.variables) exampleVars[v.name] = v.example;
+    // В превью/тесте подставляем РЕАЛЬНОЕ имя бренда из настроек вместо example-заглушки.
+    if ("serviceName" in exampleVars && cfgForVars.serviceName) exampleVars.serviceName = cfgForVars.serviceName;
     const vars = { ...exampleVars, ...(parsed.data.vars ?? {}) };
 
     return res.json({
@@ -118,8 +122,12 @@ emailTemplatesRouter.post(
     const parsed = sendTestSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Invalid payload", errors: parsed.error.flatten() });
 
+    const { getSystemConfig: getCfg } = await import("../client/client.service.js");
+    const cfgForVars = await getCfg();
     const exampleVars: Record<string, string> = {};
     for (const v of item.variables) exampleVars[v.name] = v.example;
+    // В превью/тесте подставляем РЕАЛЬНОЕ имя бренда из настроек вместо example-заглушки.
+    if ("serviceName" in exampleVars && cfgForVars.serviceName) exampleVars.serviceName = cfgForVars.serviceName;
     const vars = { ...exampleVars, ...(parsed.data.vars ?? {}) };
 
     const subject = renderTemplate(item.subject, vars);
@@ -127,8 +135,7 @@ emailTemplatesRouter.post(
 
     try {
       const { sendEmail } = await import("../mail/mail.service.js");
-      const { getSystemConfig } = await import("../client/client.service.js");
-      const config = await getSystemConfig() as Record<string, unknown>;
+      const config = cfgForVars as unknown as Record<string, unknown>;
       const smtpConfig = {
         host: (config.smtpHost as string) || "",
         port: (config.smtpPort as number) ?? 587,
@@ -137,6 +144,9 @@ emailTemplatesRouter.post(
         password: (config.smtpPassword as string) ?? null,
         fromEmail: (config.smtpFromEmail as string) ?? null,
         fromName: (config.smtpFromName as string) ?? null,
+        provider: (config.mailProvider === "resend" ? "resend" : "smtp") as "smtp" | "resend",
+        resendApiKey: (config.resendApiKey as string) ?? null,
+        resendFromEmail: (config.resendFromEmail as string) ?? null,
       };
       const result = await sendEmail(smtpConfig, parsed.data.toEmail, subject, body);
       if (!result.ok) {

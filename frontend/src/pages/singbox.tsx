@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { motion } from "framer-motion";
-import { Server, Plus, Copy, Check, Loader2, Pencil, Trash2, FileJson, Layers, Tag, Boxes } from "lucide-react";
+import { Server, Plus, Copy, Check, Loader2, Pencil, Trash2, FileJson, Layers, Tag, Boxes, MousePointerClick } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -444,7 +444,13 @@ export function SingboxPage() {
               </div>
             </div>
             {nodes.length === 0 ? (
-              <p className="text-muted-foreground text-sm py-6 text-center">Нод пока нет. Нажмите «Добавить ноду».</p>
+              <div className="flex flex-col items-center justify-center text-center py-8">
+                <div className="h-14 w-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-3">
+                  <Server className="h-7 w-7 text-muted-foreground/60" />
+                </div>
+                <p className="text-sm font-medium">Нод пока нет</p>
+                <p className="text-xs text-muted-foreground mt-1">Нажмите «Добавить ноду» в шапке страницы.</p>
+              </div>
             ) : (
               <ul className="space-y-2">
                 {nodes.map((n) => (
@@ -498,7 +504,12 @@ export function SingboxPage() {
               </div>
             </div>
             {!detailId ? (
-              <p className="text-muted-foreground text-sm py-6 text-center">Выберите ноду из списка слева.</p>
+              <div className="flex flex-col items-center justify-center text-center py-8">
+                <div className="h-14 w-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-3">
+                  <MousePointerClick className="h-7 w-7 text-muted-foreground/60" />
+                </div>
+                <p className="text-sm text-muted-foreground">Выберите ноду из списка слева.</p>
+              </div>
             ) : detailLoading ? (
               <div className="flex justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />

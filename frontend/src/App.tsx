@@ -33,6 +33,11 @@ import { AdminBotConversationsPage } from "@/pages/admin-bot-conversations";
 import { CmdKPalette } from "@/components/cmd-k-palette";
 import { PromoPage } from "@/pages/promo";
 import { PromoCodesPage } from "@/pages/promo-codes";
+import { RemnaNodesPage } from "@/pages/remna-nodes";
+import { RemnaSquadsPage } from "@/pages/remna-squads";
+import { RemnaHostsPage } from "@/pages/remna-hosts";
+import { RemnaProfilesPage } from "@/pages/remna-profiles";
+import { RemnaSubTemplatesPage } from "@/pages/remna-sub-templates";
 import { AnalyticsPage } from "@/pages/analytics";
 import { MarketingPage } from "@/pages/marketing";
 import { AdminsPage } from "@/pages/admins";
@@ -249,6 +254,11 @@ function AppRoutes() {
         <Route path="bot-conversations" element={<ForceChangePassword><AdminBotConversationsPage /></ForceChangePassword>} />
         <Route path="promo" element={<ForceChangePassword><PromoPage /></ForceChangePassword>} />
         <Route path="promo-codes" element={<ForceChangePassword><PromoCodesPage /></ForceChangePassword>} />
+        <Route path="remna-nodes" element={<ForceChangePassword><RemnaNodesPage /></ForceChangePassword>} />
+        <Route path="remna-squads" element={<ForceChangePassword><RemnaSquadsPage /></ForceChangePassword>} />
+        <Route path="remna-hosts" element={<ForceChangePassword><RemnaHostsPage /></ForceChangePassword>} />
+        <Route path="remna-profiles" element={<ForceChangePassword><RemnaProfilesPage /></ForceChangePassword>} />
+        <Route path="remna-sub-templates" element={<ForceChangePassword><RemnaSubTemplatesPage /></ForceChangePassword>} />
         <Route path="analytics" element={<ForceChangePassword><AnalyticsPage /></ForceChangePassword>} />
         <Route path="marketing" element={<ForceChangePassword><MarketingPage /></ForceChangePassword>} />
         <Route path="admins" element={<ForceChangePassword><AdminsPage /></ForceChangePassword>} />

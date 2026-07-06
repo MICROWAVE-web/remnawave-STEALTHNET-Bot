@@ -59,17 +59,17 @@ export function StealthPromocodeModal({ open, onClose, onActivated }: Props) {
           onChange={(e) => { setCode(e.target.value); setResult(null); }}
           onKeyDown={(e) => { if (e.key === "Enter" && code.trim() && !busy) activate(); }}
           placeholder="Введите промокод"
-          className="w-full rounded-2xl bg-zinc-950/60 border border-white/[0.08] px-4 py-3.5 text-sm placeholder-zinc-500 outline-none focus:border-rose-500/40 transition"
+          className="w-full rounded-2xl bg-zinc-950/60 border border-white/[0.08] px-4 py-3.5 text-sm placeholder-zinc-500 outline-none focus:border-saccent-500/40 transition"
           autoFocus
         />
 
         {result && (
           <div className={cn(
             "rounded-xl border p-3 flex items-start gap-2 text-xs",
-            result.ok ? "bg-emerald-500/10 border-emerald-500/30" : "bg-rose-500/10 border-rose-500/30",
+            result.ok ? "bg-emerald-500/10 border-emerald-500/30" : "bg-saccent-500/10 border-saccent-500/30",
           )}>
-            {result.ok ? <Check className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" /> : <AlertCircle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />}
-            <span className={result.ok ? "text-emerald-200" : "text-rose-200"}>{result.message}</span>
+            {result.ok ? <Check className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" /> : <AlertCircle className="h-4 w-4 text-saccent-400 shrink-0 mt-0.5" />}
+            <span className={result.ok ? "text-emerald-200" : "text-saccent-200"}>{result.message}</span>
           </div>
         )}
 

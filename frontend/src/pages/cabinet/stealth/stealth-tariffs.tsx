@@ -102,6 +102,8 @@ export function StealthTariffs() {
   const [convPreview, setConvPreview] = useState<TariffConversionPreview | null>(null);
   // судьба доп. устройств при конвертации (true = оставить).
   const [convKeepExtras, setConvKeepExtras] = useState(true);
+  // Блокирующее подтверждение балансовой покупки (мгновенное списание → замена/удаление подписок).
+  const [balConfirm, setBalConfirm] = useState<{ title: string; body: string } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -307,7 +309,38 @@ export function StealthTariffs() {
     }
   }
 
+  // Баланс списывает МГНОВЕННО → перед заменой/удалением подписок показываем
+  // блокирующее подтверждение (как в боте). Чистое продление того же тарифа — без окна.
   async function pay() {
+    if (!state.token || !selectedTariffId || !selectedPriceOptionId || !selectedMethod) return;
+    if (selectedMethod.kind === "balance") {
+      setPaying(true);
+      setPayError(null);
+      const prev = await api.clientTariffConversionPreview(state.token, {
+        tariffId: selectedTariffId,
+        priceOptionId: selectedPriceOptionId ?? undefined,
+      }).catch(() => null);
+      setPaying(false);
+      const willReplace = !!(prev && prev.willConvert && (prev.mode !== "extend" || (prev.othersToRemove ?? 0) > 0));
+      if (willReplace) {
+        const subName = prev!.subscription?.tariffName ? `«${prev!.subscription.tariffName}»` : "текущую подписку";
+        const bodyMain = prev!.mode === "replace"
+          ? `Старая подписка удалится, остаток ${prev!.remainingDays ?? 0} дн. сгорит — создастся новая на выбранный тариф (${prev!.purchasedDays ?? 0} дн. с нуля). VPN-ссылка сохранится.`
+          : prev!.mode === "extend"
+            ? `Этот тариф у вас уже есть — он будет продлён.`
+            : `Текущая подписка будет переведена на новый тариф. Остаток ${prev!.remainingDays ?? 0} дн. пересчитается в ${prev!.convertedDays ?? 0} дн. по цене нового тарифа.`;
+        const othersLine = (prev!.othersToRemove ?? 0) > 0 ? `\n⚠️ Остальные ${prev!.othersToRemove} ваши подписки будут удалены — останется одна.` : "";
+        setBalConfirm({
+          title: prev!.mode === "extend" ? `Продление затронет ${subName}` : `Покупка заменит ${subName}`,
+          body: bodyMain + othersLine,
+        });
+        return;
+      }
+    }
+    await doPay();
+  }
+
+  async function doPay() {
     if (!state.token || !selectedTariffId || !selectedPriceOptionId || !selectedMethod) return;
     setPaying(true);
     setPayError(null);
@@ -432,12 +465,12 @@ export function StealthTariffs() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, ease: "easeOut" }}
-          className="relative overflow-hidden rounded-2xl border border-rose-500/25 bg-rose-500/[0.07] backdrop-blur-xl p-3.5 shadow-[0_0_36px_-14px_rgba(255,35,87,0.4)]"
+          className="relative overflow-hidden rounded-2xl border border-saccent-500/25 bg-saccent-500/[0.07] backdrop-blur-xl p-3.5 shadow-[0_0_36px_-14px_rgb(var(--stealth-accent)_/_0.4)]"
         >
-          <div className="absolute inset-0 bg-gradient-to-r from-rose-500/10 to-transparent pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-r from-saccent-500/10 to-transparent pointer-events-none" />
           <div className="relative flex items-center gap-2.5">
-            <div className="p-1.5 rounded-lg bg-rose-500/15 shrink-0">
-              <RefreshCw className="h-3.5 w-3.5 text-rose-400" />
+            <div className="p-1.5 rounded-lg bg-saccent-500/15 shrink-0">
+              <RefreshCw className="h-3.5 w-3.5 text-saccent-400" />
             </div>
             <div className="min-w-0">
               <p className="text-xs font-bold">Продление подписки</p>
@@ -452,7 +485,7 @@ export function StealthTariffs() {
                 onClick={() => setExtKeepExtras(true)}
                 className={cn(
                   "rounded-xl border p-2.5 text-left transition-all",
-                  extKeepExtras ? "border-rose-500/50 bg-rose-500/10" : "border-white/[0.08] bg-zinc-900/40 hover:border-white/20",
+                  extKeepExtras ? "border-saccent-500/50 bg-saccent-500/10" : "border-white/[0.08] bg-zinc-900/40 hover:border-white/20",
                 )}
               >
                 <p className="text-[11px] font-bold">📱 +{extendTarget.extraDevices} устройств</p>
@@ -463,7 +496,7 @@ export function StealthTariffs() {
                 onClick={() => setExtKeepExtras(false)}
                 className={cn(
                   "rounded-xl border p-2.5 text-left transition-all",
-                  !extKeepExtras ? "border-rose-500/50 bg-rose-500/10" : "border-white/[0.08] bg-zinc-900/40 hover:border-white/20",
+                  !extKeepExtras ? "border-saccent-500/50 bg-saccent-500/10" : "border-white/[0.08] bg-zinc-900/40 hover:border-white/20",
                 )}
               >
                 <p className="text-[11px] font-bold">⚡ Убрать</p>
@@ -521,7 +554,7 @@ export function StealthTariffs() {
                 className={cn(
                   "shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all duration-300 active:scale-95",
                   active
-                    ? "bg-white/[0.06] text-white border-rose-500/45 backdrop-blur-xl shadow-[0_0_24px_-4px_rgba(255,35,87,0.45)]"
+                    ? "bg-white/[0.06] text-white border-saccent-500/45 backdrop-blur-xl shadow-[0_0_24px_-4px_rgb(var(--stealth-accent)_/_0.45)]"
                     : "bg-white/[0.02] text-zinc-400 border-white/[0.06] backdrop-blur-xl hover:border-white/20 hover:bg-white/[0.04]",
                 )}
               >
@@ -580,7 +613,7 @@ export function StealthTariffs() {
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
-            className="text-2xl font-bold tabular-nums bg-gradient-to-r from-rose-400 via-rose-300 to-fuchsia-400 bg-clip-text text-transparent drop-shadow-[0_0_18px_rgba(255,35,87,0.35)]"
+            className="text-2xl font-bold tabular-nums bg-gradient-to-r from-saccent-400 via-saccent-300 to-fuchsia-400 bg-clip-text text-transparent drop-shadow-[0_0_18px_rgb(var(--stealth-accent)_/_0.35)]"
           >
             {fmtPrice(totalPrice, currency)}
           </motion.span>
@@ -662,30 +695,37 @@ export function StealthTariffs() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, ease: "easeOut" }}
-          className="relative overflow-hidden rounded-2xl border border-rose-500/20 bg-rose-500/[0.06] backdrop-blur-xl p-4 shadow-[0_0_36px_-14px_rgba(255,35,87,0.35)]"
+          className="relative overflow-hidden rounded-2xl border border-saccent-500/20 bg-saccent-500/[0.06] backdrop-blur-xl p-4 shadow-[0_0_36px_-14px_rgb(var(--stealth-accent)_/_0.35)]"
         >
-          <div className="absolute inset-0 bg-gradient-to-br from-rose-500/10 via-transparent to-transparent pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-br from-saccent-500/10 via-transparent to-transparent pointer-events-none" />
           <div className="relative flex items-start gap-3">
-            <div className="p-2 rounded-xl bg-rose-500/15 shrink-0">
-              <RefreshCw className="h-4 w-4 text-rose-400" />
+            <div className="p-2 rounded-xl bg-saccent-500/15 shrink-0">
+              <RefreshCw className="h-4 w-4 text-saccent-400" />
             </div>
             <div className="min-w-0 space-y-1">
               <p className="text-sm font-bold">
                 {convPreview.mode === "extend"
                   ? "Этот тариф у вас уже есть — подписка будет продлена"
-                  : convPreview.subscription.isTrial ? "Пробная подписка станет платной" : "Подписка будет обновлена"}
+                  : convPreview.mode === "replace"
+                    ? "Текущая подписка будет заменена новым тарифом"
+                    : convPreview.subscription.isTrial ? "Пробная подписка станет платной" : "Подписка будет обновлена"}
               </p>
               <p className="text-xs text-zinc-400 leading-relaxed">
                 {convPreview.mode === "extend"
                   ? `Вторая подписка не создастся — дни сложатся: остаток ${convPreview.remainingDays ?? 0} дн. + покупка ${convPreview.purchasedDays ?? 0} дн. = ${convPreview.totalDays ?? 0} дн. Устройства и серверы останутся как есть.`
+                  : convPreview.mode === "replace"
+                  ? `Старая подписка${convPreview.subscription.tariffName ? ` «${convPreview.subscription.tariffName}»` : ""} удалится, остаток ${convPreview.remainingDays ?? 0} дн. сгорит. Создастся новая на выбранный тариф — ${convPreview.purchasedDays ?? 0} дн. с нуля (VPN-ссылка сохранится).`
                   : <>Покупка не создаст вторую подписку — она обновит
                 {convPreview.subscription.tariffName ? ` «${convPreview.subscription.tariffName}»` : " текущую"} до нового тарифа.
                 {(convPreview.convertedDays ?? 0) > 0 && (convPreview.remainingDays ?? 0) > 0 && !(convPreview.extras && convPreview.extras.extraDevices > 0)
                   ? ` Остаток ${convPreview.remainingDays} дн. превратится в ${convPreview.convertedDays} дн. по цене нового тарифа.`
                   : ""}</>}
               </p>
+              {(convPreview.othersToRemove ?? 0) > 0 && (
+                <p className="text-xs font-bold text-amber-400">⚠️ Остальные {convPreview.othersToRemove} ваши подписки будут удалены — останется одна.</p>
+              )}
               {convPreview.mode !== "extend" && (convPreview.extras?.extraDevices ?? 0) === 0 && (convPreview.totalDays ?? 0) > 0 && (
-                <p className="text-xs font-bold text-rose-400">Итого: {convPreview.totalDays} дн. нового тарифа</p>
+                <p className="text-xs font-bold text-saccent-400">Итого: {convPreview.totalDays} дн. нового тарифа</p>
               )}
 
               {/* same-tariff продление: устройства — сохранить (доплата) или убрать. */}
@@ -699,7 +739,7 @@ export function StealthTariffs() {
                     onClick={() => setConvKeepExtras(true)}
                     className={cn(
                       "w-full text-left rounded-xl border p-3 transition-all",
-                      convKeepExtras ? "border-rose-500/50 bg-rose-500/10" : "border-white/[0.08] bg-zinc-900/40 hover:border-white/20",
+                      convKeepExtras ? "border-saccent-500/50 bg-saccent-500/10" : "border-white/[0.08] bg-zinc-900/40 hover:border-white/20",
                     )}
                   >
                     <p className="text-xs font-bold">📱 Сохранить устройства (+{fmtPrice(convPreview.extras.keep.extraCost ?? 0, currency)})</p>
@@ -713,7 +753,7 @@ export function StealthTariffs() {
                     onClick={() => setConvKeepExtras(false)}
                     className={cn(
                       "w-full text-left rounded-xl border p-3 transition-all",
-                      !convKeepExtras ? "border-rose-500/50 bg-rose-500/10" : "border-white/[0.08] bg-zinc-900/40 hover:border-white/20",
+                      !convKeepExtras ? "border-saccent-500/50 bg-saccent-500/10" : "border-white/[0.08] bg-zinc-900/40 hover:border-white/20",
                     )}
                   >
                     <p className="text-xs font-bold">⚡ Убрать устройства — без доплаты</p>
@@ -736,7 +776,7 @@ export function StealthTariffs() {
                     className={cn(
                       "w-full text-left rounded-xl border p-3 transition-all",
                       convKeepExtras
-                        ? "border-rose-500/50 bg-rose-500/10"
+                        ? "border-saccent-500/50 bg-saccent-500/10"
                         : "border-white/[0.08] bg-zinc-900/40 hover:border-white/20",
                     )}
                   >
@@ -754,7 +794,7 @@ export function StealthTariffs() {
                     className={cn(
                       "w-full text-left rounded-xl border p-3 transition-all",
                       !convKeepExtras
-                        ? "border-rose-500/50 bg-rose-500/10"
+                        ? "border-saccent-500/50 bg-saccent-500/10"
                         : "border-white/[0.08] bg-zinc-900/40 hover:border-white/20",
                     )}
                   >
@@ -775,7 +815,7 @@ export function StealthTariffs() {
       {/* Promo */}
       {/* min-w-0 на input обязателен: flex-item с дефолтным min-width:auto
           не сжимался на узких экранах и выталкивал кнопку за край контейнера. */}
-      <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-xl p-2 flex items-center gap-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] focus-within:border-rose-500/35 focus-within:shadow-[0_0_28px_-10px_rgba(255,35,87,0.4),inset_0_1px_0_rgba(255,255,255,0.05)] transition-all duration-300">
+      <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-xl p-2 flex items-center gap-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] focus-within:border-saccent-500/35 focus-within:shadow-[0_0_28px_-10px_rgb(var(--stealth-accent)_/_0.4),inset_0_1px_0_rgba(255,255,255,0.05)] transition-all duration-300">
         <input
           value={promoInput}
           onChange={(e) => { setPromoInput(e.target.value); setPromoMsg(null); }}
@@ -791,7 +831,7 @@ export function StealthTariffs() {
         </button>
       </div>
       {promoMsg && (
-        <div className={cn("text-xs px-1", promoApplied ? "text-emerald-400" : "text-rose-400")}>{promoMsg}</div>
+        <div className={cn("text-xs px-1", promoApplied ? "text-emerald-400" : "text-saccent-400")}>{promoMsg}</div>
       )}
 
       {/* Payment method tiles */}
@@ -812,11 +852,11 @@ export function StealthTariffs() {
                 className={cn(
                   "rounded-2xl border p-4 transition-colors duration-300 flex flex-col items-center gap-2 backdrop-blur-xl",
                   active
-                    ? "bg-white/[0.06] border-rose-500/45 shadow-[0_0_36px_-10px_rgba(255,35,87,0.5),inset_0_1px_0_rgba(255,255,255,0.08)]"
+                    ? "bg-white/[0.06] border-saccent-500/45 shadow-[0_0_36px_-10px_rgb(var(--stealth-accent)_/_0.5),inset_0_1px_0_rgba(255,255,255,0.08)]"
                     : "bg-white/[0.02] border-white/[0.06] hover:border-white/20 hover:bg-white/[0.04]",
                 )}
               >
-                <Icon className={cn("h-5 w-5 transition-colors duration-300", active ? "text-rose-400 drop-shadow-[0_0_8px_rgba(255,35,87,0.6)]" : "text-zinc-500")} />
+                <Icon className={cn("h-5 w-5 transition-colors duration-300", active ? "text-saccent-400 drop-shadow-[0_0_8px_rgb(var(--stealth-accent)_/_0.6)]" : "text-zinc-500")} />
                 <span className="text-[11px] font-bold uppercase tracking-wider">{m.label}</span>
               </motion.button>
             );
@@ -875,12 +915,30 @@ export function StealthTariffs() {
       </div>
 
       {payError && (
-        <div className="rounded-xl bg-rose-500/10 border border-rose-500/30 p-3 flex items-start gap-2 text-xs">
-          <AlertCircle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
-          <span className="text-rose-300">{payError}</span>
+        <div className="rounded-xl bg-saccent-500/10 border border-saccent-500/30 p-3 flex items-start gap-2 text-xs">
+          <AlertCircle className="h-4 w-4 text-saccent-400 shrink-0 mt-0.5" />
+          <span className="text-saccent-300">{payError}</span>
         </div>
       )}
 
+      {balConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={() => setBalConfirm(null)}>
+          <div className="w-full max-w-sm rounded-2xl bg-zinc-900 border border-saccent-500/40 p-5 space-y-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-6 w-6 text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-1.5">
+                <p className="text-sm font-bold text-white">{balConfirm.title}</p>
+                <p className="text-xs text-zinc-300 whitespace-pre-line leading-relaxed">{balConfirm.body}</p>
+              </div>
+            </div>
+            <p className="text-xs text-zinc-400">Списать {fmtPrice(totalPrice, currency)} с баланса и продолжить?</p>
+            <div className="flex gap-2 pt-1">
+              <button type="button" onClick={() => setBalConfirm(null)} className="flex-1 rounded-xl border border-zinc-700 py-2.5 text-sm font-semibold text-zinc-300 active:scale-95 transition">Отмена</button>
+              <button type="button" onClick={() => { setBalConfirm(null); void doPay(); }} className="flex-1 rounded-xl bg-saccent-500 py-2.5 text-sm font-bold text-white active:scale-95 transition">Да, продолжить</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Big white CTA */}
       <div className="pt-2">
         <StadiumButton

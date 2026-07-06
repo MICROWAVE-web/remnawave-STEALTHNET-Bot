@@ -25,6 +25,51 @@ import {
   remnaEnableNode,
   remnaDisableNode,
   remnaRestartNode,
+  remnaCreateNode,
+  remnaUpdateNode,
+  remnaDeleteNode,
+  remnaGetConfigProfiles,
+  remnaGetPubKey,
+  remnaGetNodeUsersUsage,
+  remnaGetNodesMetrics,
+  remnaResetNodeTraffic,
+  remnaRestartAllNodes,
+  remnaGetBandwidthStats,
+  remnaGetInfraBillingNodes,
+  remnaGetSubTemplates,
+  remnaGetSubTemplate,
+  remnaUpdateSubTemplate,
+  remnaGetHwidStats,
+  remnaGetHwidTopUsers,
+  remnaGetRecap,
+  remnaHostsBulk,
+  remnaGetTorrentReports,
+  remnaGetTorrentStats,
+  remnaDropConnections,
+  remnaGetHostTags,
+  remnaUsersBulkResetTraffic,
+  remnaUsersBulkRevoke,
+  remnaUsersBulkDelete,
+  remnaUsersBulkUpdateSquads,
+  remnaGetNodePlugins,
+  remnaDeleteNodePlugin,
+  remnaUpdateNodePlugin,
+  remnaGetInfraProviders, remnaCreateInfraProvider, remnaDeleteInfraProvider,
+  remnaCreateInfraBillingNode, remnaDeleteInfraBillingNode, remnaUpdateInfraBillingNode,
+  remnaGetSubSettings, remnaUpdateSubSettings,
+  remnaGetUserDevices, remnaDeleteUserDevice, remnaDeleteAllUserDevices,
+  remnaSquadAddUsers, remnaSquadRemoveUsers, remnaGetSquadAccessibleNodes,
+  remnaTruncateTorrent,
+  remnaCreateInternalSquad,
+  remnaUpdateInternalSquad,
+  remnaDeleteInternalSquad,
+  remnaGetHosts,
+  remnaCreateHost,
+  remnaUpdateHost,
+  remnaDeleteHost,
+  remnaCreateConfigProfile,
+  remnaUpdateConfigProfile,
+  remnaDeleteConfigProfile,
   remnaGetUser,
   remnaUpdateUser,
   remnaRevokeUserSubscription,
@@ -87,6 +132,9 @@ import { adminGramadsRouter } from "./gramads.routes.js";
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth);
+// 🔒 SECURITY: секционный RBAC ДОЛЖЕН стоять ДО регистрации под-роутеров — иначе backup
+// (pg_dump/restore БД) и /languages обходят requireAdminSection (менеджер дампит/перезаписывает БД).
+adminRouter.use(requireAdminSection);
 
 /** Обёртка для async-роутов: ошибки передаются в next() и возвращают 500. */
 function asyncRoute(
@@ -100,8 +148,6 @@ function asyncRoute(
 registerBackupRoutes(adminRouter, asyncRoute);
 
 adminRouter.use("/languages", languageRouter);
-
-adminRouter.use(requireAdminSection);
 
 adminRouter.use("/gramads", adminGramadsRouter);
 
@@ -226,6 +272,232 @@ adminRouter.post("/remna/nodes/:uuid/restart", async (req, res) => {
   if (result.error) {
     return res.status(result.status >= 400 ? result.status : 500).json({ message: result.error });
   }
+  return res.json(result.data ?? { ok: true });
+});
+
+// ─── Ноды: CRUD + config-профили (Remnawave 2.8.x) ───
+const remnaNodeCreateSchema = z.object({
+  name: z.string().min(3),
+  address: z.string().min(1),
+  port: z.number().int().optional(),
+  countryCode: z.string().optional(),
+  consumptionMultiplier: z.number().optional(),
+  trafficLimitBytes: z.number().optional(),
+  notifyPercent: z.number().optional(),
+  trafficResetDay: z.number().int().optional(),
+  isTrafficTrackingActive: z.boolean().optional(),
+  note: z.string().optional(),
+  configProfile: z.object({
+    activeConfigProfileUuid: z.string().uuid(),
+    activeInbounds: z.array(z.string().uuid()),
+  }),
+});
+const remnaNodeUpdateSchema = remnaNodeCreateSchema.partial();
+
+adminRouter.get("/remna/config-profiles", async (_req, res) => {
+  const result = await remnaGetConfigProfiles();
+  if (result.error) return res.status(result.status >= 400 ? result.status : 500).json({ message: result.error });
+  return res.json(result.data ?? {});
+});
+
+// Публичный ключ панели (SSL_CERT) для install-команды новой ноды.
+adminRouter.get("/remna/pubkey", async (_req, res) => {
+  const result = await remnaGetPubKey();
+  if (result.error) return res.status(result.status >= 400 ? result.status : 500).json({ message: result.error });
+  return res.json(result.data ?? {});
+});
+
+// Топ-пользователи по трафику на конкретной ноде за период (bandwidth-статы 2.8.0).
+adminRouter.get("/remna/nodes/:uuid/users-usage", async (req, res) => {
+  const idp = remnaNodeUuidSchema.safeParse({ uuid: req.params.uuid });
+  if (!idp.success) return res.status(400).json({ message: "Invalid node UUID" });
+  const days = Math.min(Math.max(parseInt(req.query.days as string) || 7, 1), 90);
+  const end = new Date();
+  const start = new Date(end.getTime() - days * 86400000);
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  const result = await remnaGetNodeUsersUsage(idp.data.uuid, fmt(start), fmt(end), 50);
+  if (result.error) return res.status(result.status >= 400 ? result.status : 500).json({ message: result.error });
+  return res.json(result.data ?? {});
+});
+
+adminRouter.post("/remna/nodes/restart-all", async (_req, res) => {
+  const result = await remnaRestartAllNodes();
+  if (result.error) return res.status(result.status >= 400 ? result.status : 502).json({ message: result.error });
+  return res.json(result.data ?? { ok: true });
+});
+
+adminRouter.post("/remna/nodes/:uuid/reset-traffic", async (req, res) => {
+  const result = await remnaResetNodeTraffic(req.params.uuid);
+  if (result.error) return res.status(result.status >= 400 ? result.status : 502).json({ message: result.error });
+  return res.json(result.data ?? { ok: true });
+});
+
+adminRouter.get("/remna/system/bandwidth", async (_req, res) => {
+  const result = await remnaGetBandwidthStats();
+  if (result.error) return res.status(result.status >= 400 ? result.status : 502).json({ message: result.error });
+  return res.json(result.data);
+});
+
+adminRouter.get("/remna/infra-billing/nodes", async (_req, res) => {
+  const result = await remnaGetInfraBillingNodes();
+  if (result.error) return res.status(result.status >= 400 ? result.status : 502).json({ message: result.error });
+  return res.json(result.data);
+});
+
+const remnaPass = (result: { error?: string | null; status: number; data?: unknown }, res: import("express").Response, fallback?: unknown) => {
+  if (result.error) return res.status(result.status >= 400 ? result.status : 502).json({ message: result.error });
+  return res.json(result.data ?? fallback ?? { ok: true });
+};
+
+adminRouter.get("/remna/infra-billing/providers", async (_req, res) => remnaPass(await remnaGetInfraProviders(), res));
+adminRouter.post("/remna/infra-billing/providers", async (req, res) => remnaPass(await remnaCreateInfraProvider(req.body), res));
+adminRouter.delete("/remna/infra-billing/providers/:uuid", async (req, res) => remnaPass(await remnaDeleteInfraProvider(req.params.uuid), res));
+adminRouter.post("/remna/infra-billing/nodes", async (req, res) => remnaPass(await remnaCreateInfraBillingNode(req.body), res));
+adminRouter.patch("/remna/infra-billing/nodes", async (req, res) => remnaPass(await remnaUpdateInfraBillingNode(req.body), res));
+adminRouter.delete("/remna/infra-billing/nodes/:uuid", async (req, res) => remnaPass(await remnaDeleteInfraBillingNode(req.params.uuid), res));
+adminRouter.get("/remna/subscription-settings", async (_req, res) => remnaPass(await remnaGetSubSettings(), res));
+adminRouter.patch("/remna/subscription-settings", async (req, res) => remnaPass(await remnaUpdateSubSettings(req.body), res));
+adminRouter.get("/remna/user-devices/:uuid", async (req, res) => remnaPass(await remnaGetUserDevices(req.params.uuid), res));
+adminRouter.post("/remna/user-devices/:uuid/delete", async (req, res) => remnaPass(await remnaDeleteUserDevice(req.params.uuid, req.body?.hwid), res));
+adminRouter.post("/remna/user-devices/:uuid/delete-all", async (req, res) => remnaPass(await remnaDeleteAllUserDevices(req.params.uuid), res));
+adminRouter.get("/remna/squads/:uuid/accessible-nodes", async (req, res) => remnaPass(await remnaGetSquadAccessibleNodes(req.params.uuid), res));
+adminRouter.delete("/remna/torrent/truncate", async (_req, res) => remnaPass(await remnaTruncateTorrent(), res));
+
+adminRouter.get("/remna/hosts/tags", async (_req, res) => remnaPass(await remnaGetHostTags(), res));
+adminRouter.post("/remna/users/bulk/:action", async (req, res) => {
+  const uuids: string[] = Array.isArray(req.body?.uuids) ? req.body.uuids : [];
+  const a = req.params.action;
+  if (a === "reset-traffic") return remnaPass(await remnaUsersBulkResetTraffic(uuids), res);
+  if (a === "revoke") return remnaPass(await remnaUsersBulkRevoke(uuids), res);
+  if (a === "delete") return remnaPass(await remnaUsersBulkDelete(uuids), res);
+  if (a === "update-squads") return remnaPass(await remnaUsersBulkUpdateSquads(uuids, Array.isArray(req.body?.activeInternalSquads) ? req.body.activeInternalSquads : []), res);
+  return res.status(400).json({ message: "bad action" });
+});
+adminRouter.get("/remna/node-plugins", async (_req, res) => remnaPass(await remnaGetNodePlugins(), res));
+adminRouter.delete("/remna/node-plugins/:uuid", async (req, res) => remnaPass(await remnaDeleteNodePlugin(req.params.uuid), res));
+adminRouter.patch("/remna/node-plugins", async (req, res) => remnaPass(await remnaUpdateNodePlugin(req.body), res));
+
+adminRouter.get("/remna/sub-templates", async (_req, res) => remnaPass(await remnaGetSubTemplates(), res));
+adminRouter.get("/remna/sub-templates/:uuid", async (req, res) => remnaPass(await remnaGetSubTemplate(req.params.uuid), res));
+adminRouter.patch("/remna/sub-templates", async (req, res) => remnaPass(await remnaUpdateSubTemplate(req.body), res));
+adminRouter.get("/remna/hwid/stats", async (_req, res) => remnaPass(await remnaGetHwidStats(), res));
+adminRouter.get("/remna/hwid/top-users", async (_req, res) => remnaPass(await remnaGetHwidTopUsers(), res));
+adminRouter.get("/remna/recap", async (_req, res) => remnaPass(await remnaGetRecap(), res));
+adminRouter.post("/remna/hosts/bulk/:action", async (req, res) => {
+  const action = req.params.action;
+  if (action !== "enable" && action !== "disable" && action !== "delete") return res.status(400).json({ message: "bad action" });
+  return remnaPass(await remnaHostsBulk(action, Array.isArray(req.body?.uuids) ? req.body.uuids : []), res);
+});
+adminRouter.get("/remna/torrent/reports", async (req, res) => remnaPass(await remnaGetTorrentReports({ start: Number(req.query.start) || 0, size: Number(req.query.size) || 50 }), res));
+adminRouter.get("/remna/torrent/stats", async (_req, res) => remnaPass(await remnaGetTorrentStats(), res));
+adminRouter.post("/remna/drop-connections", async (req, res) => remnaPass(await remnaDropConnections(req.body?.dropBy), res));
+
+adminRouter.get("/remna/nodes-metrics", async (_req, res) => {
+  const result = await remnaGetNodesMetrics();
+  if (result.error) return res.status(result.status >= 400 ? result.status : 502).json({ message: result.error });
+  return res.json(result.data);
+});
+
+adminRouter.post("/remna/nodes", async (req, res) => {
+  const parsed = remnaNodeCreateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Неверные данные ноды", errors: parsed.error.flatten() });
+  const result = await remnaCreateNode(parsed.data);
+  if (result.error) return res.status(result.status >= 400 ? result.status : 500).json({ message: result.error });
+  return res.json(result.data ?? { ok: true });
+});
+
+adminRouter.patch("/remna/nodes/:uuid", async (req, res) => {
+  const idp = remnaNodeUuidSchema.safeParse({ uuid: req.params.uuid });
+  if (!idp.success) return res.status(400).json({ message: "Invalid node UUID" });
+  const bodyp = remnaNodeUpdateSchema.safeParse(req.body ?? {});
+  if (!bodyp.success) return res.status(400).json({ message: "Неверные данные", errors: bodyp.error.flatten() });
+  const result = await remnaUpdateNode({ uuid: idp.data.uuid, ...bodyp.data });
+  if (result.error) return res.status(result.status >= 400 ? result.status : 500).json({ message: result.error });
+  return res.json(result.data ?? { ok: true });
+});
+
+adminRouter.delete("/remna/nodes/:uuid", async (req, res) => {
+  const idp = remnaNodeUuidSchema.safeParse({ uuid: req.params.uuid });
+  if (!idp.success) return res.status(400).json({ message: "Invalid node UUID" });
+  const result = await remnaDeleteNode(idp.data.uuid);
+  if (result.error) return res.status(result.status >= 400 ? result.status : 500).json({ message: result.error });
+  return res.json(result.data ?? { ok: true });
+});
+
+// ─── Сквады (internal): CRUD ───
+const remnaSquadCreateSchema = z.object({ name: z.string().min(1), inbounds: z.array(z.string().uuid()) });
+adminRouter.post("/remna/squads/internal", async (req, res) => {
+  const parsed = remnaSquadCreateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Неверные данные сквада", errors: parsed.error.flatten() });
+  const result = await remnaCreateInternalSquad(parsed.data);
+  if (result.error) return res.status(result.status >= 400 ? result.status : 500).json({ message: result.error });
+  return res.json(result.data ?? { ok: true });
+});
+adminRouter.patch("/remna/squads/internal/:uuid", async (req, res) => {
+  const idp = remnaNodeUuidSchema.safeParse({ uuid: req.params.uuid });
+  if (!idp.success) return res.status(400).json({ message: "Invalid squad UUID" });
+  const b = (req.body ?? {}) as { name?: string; inbounds?: string[] };
+  const result = await remnaUpdateInternalSquad({ uuid: idp.data.uuid, ...b });
+  if (result.error) return res.status(result.status >= 400 ? result.status : 500).json({ message: result.error });
+  return res.json(result.data ?? { ok: true });
+});
+adminRouter.delete("/remna/squads/internal/:uuid", async (req, res) => {
+  const idp = remnaNodeUuidSchema.safeParse({ uuid: req.params.uuid });
+  if (!idp.success) return res.status(400).json({ message: "Invalid squad UUID" });
+  const result = await remnaDeleteInternalSquad(idp.data.uuid);
+  if (result.error) return res.status(result.status >= 400 ? result.status : 500).json({ message: result.error });
+  return res.json(result.data ?? { ok: true });
+});
+
+// ─── Хосты: CRUD ───
+adminRouter.get("/remna/hosts", async (_req, res) => {
+  const result = await remnaGetHosts();
+  if (result.error) return res.status(result.status >= 400 ? result.status : 500).json({ message: result.error });
+  return res.json(result.data ?? {});
+});
+adminRouter.post("/remna/hosts", async (req, res) => {
+  if (typeof req.body !== "object" || req.body === null) return res.status(400).json({ message: "Тело хоста обязательно" });
+  const result = await remnaCreateHost(req.body as Record<string, unknown>);
+  if (result.error) return res.status(result.status >= 400 ? result.status : 500).json({ message: result.error });
+  return res.json(result.data ?? { ok: true });
+});
+adminRouter.patch("/remna/hosts/:uuid", async (req, res) => {
+  const idp = remnaNodeUuidSchema.safeParse({ uuid: req.params.uuid });
+  if (!idp.success) return res.status(400).json({ message: "Invalid host UUID" });
+  const result = await remnaUpdateHost({ uuid: idp.data.uuid, ...((req.body ?? {}) as Record<string, unknown>) });
+  if (result.error) return res.status(result.status >= 400 ? result.status : 500).json({ message: result.error });
+  return res.json(result.data ?? { ok: true });
+});
+adminRouter.delete("/remna/hosts/:uuid", async (req, res) => {
+  const idp = remnaNodeUuidSchema.safeParse({ uuid: req.params.uuid });
+  if (!idp.success) return res.status(400).json({ message: "Invalid host UUID" });
+  const result = await remnaDeleteHost(idp.data.uuid);
+  if (result.error) return res.status(result.status >= 400 ? result.status : 500).json({ message: result.error });
+  return res.json(result.data ?? { ok: true });
+});
+
+// ─── Config-профили: CRUD (GET есть выше) ───
+const remnaProfileCreateSchema = z.object({ name: z.string().min(1), config: z.any() });
+adminRouter.post("/remna/config-profiles", async (req, res) => {
+  const parsed = remnaProfileCreateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Неверные данные профиля", errors: parsed.error.flatten() });
+  const result = await remnaCreateConfigProfile(parsed.data);
+  if (result.error) return res.status(result.status >= 400 ? result.status : 500).json({ message: result.error });
+  return res.json(result.data ?? { ok: true });
+});
+adminRouter.patch("/remna/config-profiles/:uuid", async (req, res) => {
+  const idp = remnaNodeUuidSchema.safeParse({ uuid: req.params.uuid });
+  if (!idp.success) return res.status(400).json({ message: "Invalid profile UUID" });
+  const b = (req.body ?? {}) as { name?: string; config?: unknown };
+  const result = await remnaUpdateConfigProfile({ uuid: idp.data.uuid, ...b });
+  if (result.error) return res.status(result.status >= 400 ? result.status : 500).json({ message: result.error });
+  return res.json(result.data ?? { ok: true });
+});
+adminRouter.delete("/remna/config-profiles/:uuid", async (req, res) => {
+  const idp = remnaNodeUuidSchema.safeParse({ uuid: req.params.uuid });
+  if (!idp.success) return res.status(400).json({ message: "Invalid profile UUID" });
+  const result = await remnaDeleteConfigProfile(idp.data.uuid);
+  if (result.error) return res.status(result.status >= 400 ? result.status : 500).json({ message: result.error });
   return res.json(result.data ?? { ok: true });
 });
 
@@ -2436,7 +2708,7 @@ adminRouter.get("/settings", asyncRoute(async (_req, res) => {
 
 /** Версия панели — для мониторинга. Под auth, чтобы не светить наружу. */
 adminRouter.get("/version", asyncRoute(async (_req, res) => {
-  return res.json({ version: "5.1.0" });
+  return res.json({ version: "5.2.0" });
 }));
 
 /**
@@ -2603,6 +2875,9 @@ const updateSettingsSchema = z.object({
   smtpPassword: z.string().max(500).nullable().optional(),
   smtpFromEmail: z.string().email().max(255).nullable().optional(),
   smtpFromName: z.string().max(200).nullable().optional(),
+  mailProvider: z.enum(["smtp", "resend"]).optional(),
+  resendApiKey: z.string().max(500).nullable().optional(),
+  resendFromEmail: z.string().email().max(255).nullable().optional(),
   publicAppUrl: z.string().max(2000).nullable().optional(),
   telegramBotToken: z.string().max(500).nullable().optional(),
   telegramBotUsername: z.string().max(100).nullable().optional(),
@@ -2717,6 +2992,11 @@ const updateSettingsSchema = z.object({
   autoBroadcastCron: z.string().max(100).nullable().optional(),
   adminFrontNotificationsEnabled: z.boolean().optional(),
   skipEmailVerification: z.boolean().optional(),
+  onboardingEmailRequired: z.boolean().optional(),
+  passwordResetEnabled: z.boolean().optional(),
+  stealthAccent: z.string().max(20).nullable().optional(),
+  stealthHeroImage: z.string().max(8_000_000).nullable().optional(),
+  multiSubscriptionsEnabled: z.boolean().optional(),
   // заявки на вывод реф. баланса: вкл/выкл + мин. сумма.
   withdrawalsEnabled: z.boolean().optional(),
   withdrawalMinAmount: z.number().int().min(1).max(1e7).optional(),
@@ -3063,6 +3343,18 @@ adminRouter.patch("/settings", async (req, res) => {
   if (updates.smtpFromName !== undefined) {
     const val = updates.smtpFromName ?? "";
     await prisma.systemSetting.upsert({ where: { key: "smtp_from_name" }, create: { key: "smtp_from_name", value: val }, update: { value: val } });
+  }
+  if (updates.mailProvider !== undefined) {
+    const val = updates.mailProvider === "resend" ? "resend" : "smtp";
+    await prisma.systemSetting.upsert({ where: { key: "mail_provider" }, create: { key: "mail_provider", value: val }, update: { value: val } });
+  }
+  if (updates.resendApiKey !== undefined) {
+    const val = updates.resendApiKey ?? "";
+    await prisma.systemSetting.upsert({ where: { key: "resend_api_key" }, create: { key: "resend_api_key", value: val }, update: { value: val } });
+  }
+  if (updates.resendFromEmail !== undefined) {
+    const val = updates.resendFromEmail ?? "";
+    await prisma.systemSetting.upsert({ where: { key: "resend_from_email" }, create: { key: "resend_from_email", value: val }, update: { value: val } });
   }
   if (updates.publicAppUrl !== undefined) {
     const val = updates.publicAppUrl ?? "";
@@ -3493,6 +3785,46 @@ adminRouter.patch("/settings", async (req, res) => {
     await prisma.systemSetting.upsert({
       where: { key: "skip_email_verification" },
       create: { key: "skip_email_verification", value: val },
+      update: { value: val },
+    });
+  }
+  if (updates.passwordResetEnabled !== undefined) {
+    const val = updates.passwordResetEnabled ? "true" : "false";
+    await prisma.systemSetting.upsert({
+      where: { key: "password_reset_enabled" },
+      create: { key: "password_reset_enabled", value: val },
+      update: { value: val },
+    });
+  }
+  if (updates.onboardingEmailRequired !== undefined) {
+    const val = updates.onboardingEmailRequired ? "true" : "false";
+    await prisma.systemSetting.upsert({
+      where: { key: "onboarding_email_required" },
+      create: { key: "onboarding_email_required", value: val },
+      update: { value: val },
+    });
+  }
+  if (updates.stealthAccent !== undefined) {
+    const val = updates.stealthAccent ?? "";
+    await prisma.systemSetting.upsert({
+      where: { key: "stealth_accent" },
+      create: { key: "stealth_accent", value: val },
+      update: { value: val },
+    });
+  }
+  if (updates.stealthHeroImage !== undefined) {
+    const val = updates.stealthHeroImage ?? "";
+    await prisma.systemSetting.upsert({
+      where: { key: "stealth_hero_image" },
+      create: { key: "stealth_hero_image", value: val },
+      update: { value: val },
+    });
+  }
+  if (updates.multiSubscriptionsEnabled !== undefined) {
+    const val = updates.multiSubscriptionsEnabled ? "true" : "false";
+    await prisma.systemSetting.upsert({
+      where: { key: "multi_subscriptions_enabled" },
+      create: { key: "multi_subscriptions_enabled", value: val },
       update: { value: val },
     });
   }

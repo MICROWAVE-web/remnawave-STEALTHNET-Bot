@@ -39,11 +39,11 @@ const TONES: Record<Tone, { card: string; iconBg: string; iconColor: string; tit
     chip: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
   },
   rose: {
-    card: "bg-rose-500/[0.06] border-rose-500/30",
-    iconBg: "bg-rose-500/15 border-rose-500/30",
-    iconColor: "text-rose-400",
-    title: "text-rose-100",
-    chip: "bg-rose-500/20 text-rose-200 border-rose-500/40",
+    card: "bg-saccent-500/[0.06] border-saccent-500/30",
+    iconBg: "bg-saccent-500/15 border-saccent-500/30",
+    iconColor: "text-saccent-400",
+    title: "text-saccent-100",
+    chip: "bg-saccent-500/20 text-saccent-200 border-saccent-500/40",
   },
   amber: {
     card: "bg-amber-500/[0.06] border-amber-500/30",

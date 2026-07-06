@@ -185,8 +185,7 @@ export function BackupPage() {
     }
   }
 
-  function handleRestoreSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+  function acceptRestoreFile(file: File | undefined | null) {
     setError(null);
     setSuccess(null);
     if (file) {
@@ -198,6 +197,11 @@ export function BackupPage() {
       setRestoreFile(file);
       setShowRestoreConfirm(true);
     }
+  }
+
+  function handleRestoreSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    acceptRestoreFile(e.target.files?.[0]);
+    e.target.value = "";
   }
 
   async function handleRestoreConfirm() {
@@ -310,13 +314,22 @@ export function BackupPage() {
               </div>
             </div>
             <div className="mt-4 space-y-2">
-              <input
-                type="file"
-                accept=".sql"
-                onChange={handleRestoreSelect}
-                className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-xl file:border-0 file:bg-amber-500/10 file:px-4 file:py-2 file:text-sm file:font-medium file:text-amber-600 dark:file:text-amber-400 file:cursor-pointer hover:file:bg-amber-500/20 file:transition-colors"
-                disabled={restoring}
-              />
+              <label
+                onDragOver={(e) => { e.preventDefault(); }}
+                onDrop={(e) => { e.preventDefault(); if (!restoring) acceptRestoreFile(e.dataTransfer.files?.[0]); }}
+                className={`flex flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-amber-500/30 bg-amber-500/5 px-4 py-6 text-center transition-colors ${restoring ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:border-amber-500/50 hover:bg-amber-500/10"}`}
+              >
+                <Upload className="h-6 w-6 text-amber-500 dark:text-amber-400" />
+                <span className="text-sm font-medium">Перетащи .sql сюда или нажми для выбора</span>
+                <span className="text-[11px] text-muted-foreground">Текущие данные будут заменены — подтверждение спросим отдельно</span>
+                <input
+                  type="file"
+                  accept=".sql"
+                  onChange={handleRestoreSelect}
+                  className="hidden"
+                  disabled={restoring}
+                />
+              </label>
               {restoring && (
                 <p className="text-xs text-muted-foreground flex items-center gap-2">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
