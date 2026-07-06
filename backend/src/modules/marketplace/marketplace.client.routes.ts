@@ -45,7 +45,7 @@ async function hubFetch(opts: HubFetchOptions) {
   if (opts.withKey) {
     const rt = await getMarketplaceRuntime();
     if (!rt.apiKey) {
-      return { status: 412, json: { message: "Panel is not registered on marketplace hub yet. Open Settings → Marketplace to (re)connect." } };
+      return { status: 412, json: { message: "Панель ещё не подключена к маркетплейс-хабу. Откройте Настройки → Маркетплейс для подключения." } };
     }
     headers["X-Marketplace-Key"] = rt.apiKey;
   }
@@ -105,7 +105,7 @@ marketplaceClientRouter.patch(
   "/settings",
   asyncRoute(async (req, res) => {
     const parsed = settingsSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten() });
+    if (!parsed.success) return res.status(400).json({ message: "Проверьте введённые данные", errors: parsed.error.flatten() });
     const data = parsed.data;
     const updates: Parameters<typeof setMarketplaceSettings>[0] = {};
     if (data.enabled !== undefined) updates.enabled = data.enabled;
@@ -115,7 +115,7 @@ marketplaceClientRouter.patch(
         updates.contactUsername = null;
       } else {
         const u = normaliseUsername(data.contactUsername);
-        if (!u) return res.status(400).json({ message: "Invalid Telegram username" });
+        if (!u) return res.status(400).json({ message: "Некорректный Telegram-username" });
         updates.contactUsername = u;
       }
     }

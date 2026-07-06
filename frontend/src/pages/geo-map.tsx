@@ -191,20 +191,52 @@ export function GeoMapPage() {
       <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
         <div className="flex flex-col items-center gap-4">
           <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="text-muted-foreground font-mono text-sm">Loading map data...</p>
+          <p className="text-muted-foreground text-sm">Загружаем карту…</p>
         </div>
       </div>
     );
   }
 
   if (error && !data) {
+    const isDisabled = /disabled|выключ|отключ/i.test(error);
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-8rem)]">
-        <div className="flex flex-col items-center gap-4 text-center">
-          <WifiOff className="h-12 w-12 text-red-500/60" />
-          <p className="text-red-500 font-mono">{error}</p>
-          <button onClick={() => fetchData()} className="text-sm text-primary hover:underline font-mono">
-            Retry
+      <div className="space-y-5 px-4 sm:px-6 md:px-8 pt-6 pb-10 relative">
+        <div className="fixed -z-10 bg-primary/15 blur-[120px] top-[-50px] left-[-50px] w-[300px] h-[300px] rounded-full pointer-events-none" />
+        <div className="fixed -z-10 bg-violet-500/10 blur-[100px] top-[20%] right-[-50px] w-[250px] h-[250px] rounded-full pointer-events-none" />
+        <div className="flex items-center gap-4 bg-background/40 backdrop-blur-3xl border border-white/10 p-6 rounded-[2rem] shadow-2xl">
+          <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary/20 to-violet-500/20 flex items-center justify-center shadow-inner border border-white/10">
+            <Server className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/60">Карта нод</h1>
+            <p className="text-sm text-muted-foreground mt-1">Живая география нод и подключений клиентов.</p>
+          </div>
+        </div>
+        <div className="bg-background/60 backdrop-blur-3xl border border-white/10 rounded-[2rem] py-16 shadow-xl flex flex-col items-center justify-center text-center px-6">
+          <div className="h-16 w-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
+            <WifiOff className="h-8 w-8 text-muted-foreground/60" />
+          </div>
+          {isDisabled ? (
+            <>
+              <h3 className="text-lg font-semibold tracking-tight">Карта отключена</h3>
+              <p className="text-sm text-muted-foreground mt-1 max-w-md">
+                Гео-карта выключена в настройках панели. Включите её в разделе{" "}
+                <a href="/admin/settings" className="text-primary hover:underline font-medium">Настройки</a>{" "}
+                → вкладка «Карта» — и здесь появятся ноды и подключения клиентов.
+              </p>
+            </>
+          ) : (
+            <>
+              <h3 className="text-lg font-semibold tracking-tight">Не удалось загрузить карту</h3>
+              <p className="text-sm text-red-500 dark:text-red-400 mt-1 max-w-md break-all">{error}</p>
+            </>
+          )}
+          <button
+            onClick={() => fetchData()}
+            className="mt-5 inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-foreground/5 hover:bg-foreground/10 px-4 py-2 text-sm font-medium transition-colors"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Проверить снова
           </button>
         </div>
       </div>

@@ -19,6 +19,14 @@ import { api, type PublicConfig } from "@/lib/api";
 import { NetworkBg } from "@/components/stealth/network-bg";
 import { BottomTabs } from "@/components/stealth/bottom-tabs";
 
+// hex (#RRGGBB) → "R G B" (пробел-разделённые каналы для rgb(var(--stealth-accent) / a)).
+function hexToRgbTriple(hex: string | null | undefined, fallback = "255 35 87"): string {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec((hex ?? "").trim());
+  if (!m) return fallback;
+  const n = parseInt(m[1], 16);
+  return `${(n >> 16) & 255} ${(n >> 8) & 255} ${n & 255}`;
+}
+
 export function StealthLayout() {
   const [config, setConfig] = useState<PublicConfig | null>(null);
 
@@ -27,9 +35,19 @@ export function StealthLayout() {
   }, []);
 
   const brand = (config?.serviceName ?? "STEALTHNET").toUpperCase();
+  const accent = hexToRgbTriple((config as { stealthAccent?: string | null } | null)?.stealthAccent);
+
+  // Ставим акцент ГЛОБАЛЬНО на :root — контент кабинета рендерится в отдельном
+  // поддереве (не внутри этого div), поэтому inline-style на div его не покрывает.
+  useEffect(() => {
+    document.documentElement.style.setProperty("--stealth-accent", accent);
+  }, [accent]);
 
   return (
-    <div className="min-h-screen w-full text-white relative overflow-x-hidden">
+    <div
+      className="min-h-screen w-full text-white relative overflow-x-hidden"
+      style={{ ["--stealth-accent" as string]: accent }}
+    >
       <NetworkBg />
 
       {/* Header: бренд по центру + ambient glow */}

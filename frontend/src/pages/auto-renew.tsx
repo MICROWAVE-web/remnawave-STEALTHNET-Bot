@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/auth";
 import { api } from "@/lib/api";
 import type { AutoRenewNotificationRecord, AutoRenewTriggerType, AdminSettings } from "@/lib/api";
-import { Card, CardContent } from "@/components/ui/card";
+import { CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -164,7 +164,7 @@ export function AutoRenewPage() {
         autoRenewGracePeriodDays: settings.autoRenewGracePeriodDays,
         autoRenewMaxRetries: settings.autoRenewMaxRetries,
       });
-      setSavedMsg("Сохранено ✅");
+      setSavedMsg("Сохранено");
       setTimeout(() => setSavedMsg(null), 2500);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Ошибка сохранения");
@@ -210,45 +210,36 @@ export function AutoRenewPage() {
   }, [grouped, notifs.length]);
 
   return (
-    <div className="space-y-6 p-4 sm:p-6 max-w-7xl mx-auto">
+    <div className="space-y-5 px-4 sm:px-6 md:px-8 pt-6 pb-10 relative">
+      <div className="fixed -z-10 bg-primary/15 blur-[120px] top-[-50px] left-[-50px] w-[300px] h-[300px] rounded-full pointer-events-none" />
+      <div className="fixed -z-10 bg-violet-500/10 blur-[100px] top-[20%] right-[-50px] w-[250px] h-[250px] rounded-full pointer-events-none" />
+
       {/* ── HERO ── */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-cyan-500/25 via-indigo-500/15 to-fuchsia-500/25 p-6 sm:p-8"
+        className="flex items-start gap-4 bg-background/40 backdrop-blur-3xl border border-white/10 p-6 rounded-[2rem] shadow-2xl"
       >
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(99,102,241,0.25),_transparent_60%)] pointer-events-none" />
-        <div className="absolute -top-12 -right-12 w-48 h-48 rounded-full bg-fuchsia-500/10 blur-3xl pointer-events-none" />
-        <div className="relative flex items-start gap-5">
-          <motion.div
-            animate={{ rotate: [0, 360] }}
-            transition={{ duration: 12, repeat: Infinity, ease: "linear" }}
-            className="h-16 w-16 rounded-2xl bg-gradient-to-br from-cyan-500/40 via-indigo-500/30 to-fuchsia-500/40 flex items-center justify-center shadow-xl border border-white/30 shrink-0 backdrop-blur"
-          >
-            <RefreshCw className="h-8 w-8 text-white drop-shadow" />
-          </motion.div>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-cyan-300 via-sky-300 to-fuchsia-300">
+        <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary/20 to-violet-500/20 flex items-center justify-center shadow-inner border border-white/10 shrink-0">
+          <RefreshCw className="h-6 w-6 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+            <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/60">
               Автосписание
             </h1>
-            <p className="text-sm sm:text-base text-white/70 mt-2 max-w-2xl leading-relaxed">
-              Управляйте поведением автопродления подписок и конструируйте уведомления клиентам — гибко, по событиям и с подстановкой переменных.
+            <p className="text-sm text-muted-foreground mt-1 max-w-2xl leading-relaxed">
+              Поведение автопродления подписок и конструктор уведомлений клиентам — по событиям, с подстановкой переменных.
             </p>
             <div className="flex flex-wrap gap-2 mt-3">
               <Badge label={`${notifs.length} шаблон${notifs.length === 1 ? "" : notifs.length < 5 ? "а" : "ов"}`} icon={Wand2} />
               <Badge label={settings?.yookassaRecurringEnabled ? "ЮKassa-recurring вкл." : "ЮKassa-recurring выкл."} icon={CreditCard} variant={settings?.yookassaRecurringEnabled ? "ok" : "muted"} />
               <Badge label={settings?.defaultAutoRenewEnabled ? "Default ON" : "Default OFF"} icon={Wallet} variant={settings?.defaultAutoRenewEnabled ? "ok" : "muted"} />
             </div>
-          </div>
         </div>
       </motion.div>
 
       {error && (
-        <Card className="border-rose-500/30 bg-rose-500/10 backdrop-blur">
-          <CardContent className="p-4">
-            <p className="text-rose-300 text-sm">❌ {error}</p>
-          </CardContent>
-        </Card>
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 backdrop-blur-md px-4 py-3 text-sm text-red-500 dark:text-red-400">{error}</div>
       )}
 
       {loading || !settings ? (
@@ -262,29 +253,29 @@ export function AutoRenewPage() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur p-5 sm:p-6"
+            className="rounded-[2rem] border border-white/10 bg-background/60 backdrop-blur-3xl shadow-xl p-5 sm:p-6"
           >
             <div className="flex items-center gap-2 mb-4">
-              <Layers className="h-5 w-5 text-cyan-400" />
+              <Layers className="h-5 w-5 text-primary" />
               <h2 className="font-semibold">Как работает автосписание</h2>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <TimelineStep
-                emoji="⏰" title="UPCOMING"
+                icon={Clock} title="UPCOMING"
                 desc="Напоминания клиенту перед списанием"
                 count={grouped.UPCOMING.length}
                 color="from-amber-500/20 to-orange-500/10 border-amber-500/30"
               />
               <TimelineArrow />
               <TimelineStep
-                emoji="💳" title="Списание"
+                icon={CreditCard} title="Списание"
                 desc={`За ${settings.autoRenewDaysBeforeExpiry ?? 1} дн до истечения`}
                 badge="cron"
-                color="from-cyan-500/20 to-indigo-500/10 border-cyan-500/30"
+                color="from-primary/20 to-violet-500/10 border-primary/30"
               />
               <TimelineArrow />
               <TimelineStep
-                emoji="✅" title="SUCCESS / FAILED"
+                icon={CheckCircle2} title="SUCCESS / FAILED"
                 desc="Уведомление о результате"
                 count={grouped.SUCCESS.length + grouped.FAILED.length}
                 color="from-emerald-500/20 to-rose-500/10 border-emerald-500/30"
@@ -292,20 +283,20 @@ export function AutoRenewPage() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
               <TimelineStep
-                emoji="🔄" title="RETRY (в грейсе)"
+                icon={RotateCw} title="RETRY (в грейсе)"
                 desc={`Грейс ${settings.autoRenewGracePeriodDays ?? 2} дн · до ${settings.autoRenewMaxRetries ?? 3} попыток`}
                 count={grouped.RETRY.length}
                 color="from-violet-500/20 to-fuchsia-500/10 border-violet-500/30"
               />
               <TimelineStep
-                emoji="🛑" title="EXPIRED"
+                icon={Ban} title="EXPIRED"
                 desc="Все попытки исчерпаны → автосписание выкл."
                 count={grouped.EXPIRED.length}
                 color="from-slate-500/20 to-gray-500/10 border-slate-500/30"
               />
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 flex flex-col justify-center">
                 <div className="flex items-center gap-2 text-sm">
-                  <Info className="h-4 w-4 text-cyan-400 shrink-0" />
+                  <Info className="h-4 w-4 text-primary shrink-0" />
                   <p className="text-muted-foreground">
                     Каждое событие триггерит <span className="text-foreground font-semibold">все активные шаблоны</span> своего типа.
                   </p>
@@ -319,16 +310,16 @@ export function AutoRenewPage() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
-            className="rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur overflow-hidden"
+            className="rounded-[2rem] border border-white/10 bg-background/60 backdrop-blur-3xl shadow-xl overflow-hidden"
           >
-            <div className="bg-gradient-to-br from-cyan-500/15 via-indigo-500/10 to-blue-500/15 p-5 border-b border-white/10">
+            <div className="bg-gradient-to-br from-primary/15 via-violet-500/10 to-transparent p-5 border-b border-white/10">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-cyan-500/20 flex items-center justify-center backdrop-blur">
-                  <Sliders className="h-5 w-5 text-cyan-300" />
+                <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-white/10 flex items-center justify-center shadow-inner">
+                  <Sliders className="h-5 w-5 text-primary" />
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold">Поведение списания</h2>
-                  <p className="text-xs text-muted-foreground">Когда и сколько раз cron пытается списать. <span className="text-cyan-300">Текстовые уведомления — в конструкторе ниже.</span></p>
+                  <p className="text-xs text-muted-foreground">Когда и сколько раз cron пытается списать. <span className="text-primary">Текстовые уведомления — в конструкторе ниже.</span></p>
                 </div>
               </div>
             </div>
@@ -359,7 +350,7 @@ export function AutoRenewPage() {
                   value={settings.autoRenewDaysBeforeExpiry ?? 1}
                   min={1} max={30}
                   hint="Когда cron начинает попытки списать с баланса/карты"
-                  emoji="📅"
+                  icon={Clock}
                   onChange={(v) => setSettings((s) => (s ? { ...s, autoRenewDaysBeforeExpiry: v } : s))}
                 />
                 <NumberCard
@@ -367,7 +358,7 @@ export function AutoRenewPage() {
                   value={settings.autoRenewGracePeriodDays ?? 2}
                   min={0} max={14}
                   hint="Сколько дней после истечения продолжать попытки"
-                  emoji="⏳"
+                  icon={RotateCw}
                   onChange={(v) => setSettings((s) => (s ? { ...s, autoRenewGracePeriodDays: v } : s))}
                 />
                 <NumberCard
@@ -375,7 +366,7 @@ export function AutoRenewPage() {
                   value={settings.autoRenewMaxRetries ?? 3}
                   min={1} max={10}
                   hint="После N фейлов автосписание выключится автоматически"
-                  emoji="🎯"
+                  icon={Ban}
                   onChange={(v) => setSettings((s) => (s ? { ...s, autoRenewMaxRetries: v } : s))}
                 />
               </div>
@@ -384,12 +375,12 @@ export function AutoRenewPage() {
                 <Button
                   onClick={handleSaveSettings}
                   disabled={saving}
-                  className="bg-gradient-to-r from-cyan-500 via-indigo-500 to-fuchsia-500 text-white hover:opacity-90"
+                  className="gap-2 rounded-xl"
                 >
                   {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
                   Сохранить настройки
                 </Button>
-                {savedMsg && <span className="text-sm text-emerald-300">{savedMsg}</span>}
+                {savedMsg && <span className="inline-flex items-center gap-1.5 text-sm text-emerald-500 dark:text-emerald-400"><CheckCircle2 className="h-4 w-4" />{savedMsg}</span>}
               </div>
             </CardContent>
           </motion.section>
@@ -399,25 +390,24 @@ export function AutoRenewPage() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="rounded-3xl border border-white/10 bg-white/[0.03] backdrop-blur overflow-hidden"
+            className="rounded-[2rem] border border-white/10 bg-background/60 backdrop-blur-3xl shadow-xl overflow-hidden"
           >
-            <div className="relative bg-gradient-to-br from-fuchsia-500/20 via-pink-500/10 to-violet-500/20 p-5 border-b border-white/10">
-              <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-fuchsia-500/20 blur-3xl pointer-events-none" />
+            <div className="relative bg-gradient-to-br from-primary/15 via-violet-500/10 to-transparent p-5 border-b border-white/10">
               <div className="relative flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-fuchsia-500/40 to-violet-500/40 flex items-center justify-center backdrop-blur shadow-lg">
-                    <Wand2 className="h-5 w-5 text-fuchsia-200" />
+                  <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-white/10 flex items-center justify-center shadow-inner">
+                    <Wand2 className="h-5 w-5 text-primary" />
                   </div>
                   <div>
                     <h2 className="text-lg font-semibold flex items-center gap-2">
                       Конструктор уведомлений
-                      <Sparkles className="h-4 w-4 text-fuchsia-300 animate-pulse" />
+                      <Sparkles className="h-4 w-4 text-primary animate-pulse" />
                     </h2>
                     <p className="text-xs text-muted-foreground">Все сообщения клиенту — настраиваемые шаблоны с переменными</p>
                   </div>
                 </div>
-                <Button onClick={() => setEditor("create")} className="bg-gradient-to-r from-fuchsia-500 to-violet-500 text-white hover:opacity-90">
-                  <Plus className="h-4 w-4 mr-2" />
+                <Button onClick={() => setEditor("create")} className="gap-1.5 rounded-xl">
+                  <Plus className="h-4 w-4" />
                   Создать шаблон
                 </Button>
               </div>
@@ -443,11 +433,14 @@ export function AutoRenewPage() {
 
             <CardContent className="p-5">
               {filteredNotifs.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Bell className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                  <p>Шаблонов в этой категории нет.</p>
-                  <Button variant="outline" className="mt-3" onClick={() => setEditor("create")}>
-                    <Plus className="h-4 w-4 mr-2" /> Создать первый
+                <div className="flex flex-col items-center justify-center text-center py-12">
+                  <div className="h-16 w-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
+                    <Bell className="h-8 w-8 text-muted-foreground/60" />
+                  </div>
+                  <h3 className="text-lg font-semibold tracking-tight">Шаблонов нет</h3>
+                  <p className="text-sm text-muted-foreground mt-1">В этой категории пока пусто.</p>
+                  <Button variant="outline" className="mt-4 gap-1.5 rounded-xl" onClick={() => setEditor("create")}>
+                    <Plus className="h-4 w-4" /> Создать первый
                   </Button>
                 </div>
               ) : (
@@ -500,15 +493,15 @@ export function AutoRenewPage() {
               {/* Подсказка про переменные */}
               <details className="mt-5 group">
                 <summary className="cursor-pointer text-sm font-semibold flex items-center gap-2 p-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.06] transition-colors list-none">
-                  <Info className="h-4 w-4 text-cyan-400" />
+                  <Info className="h-4 w-4 text-primary" />
                   Переменные в тексте сообщения <span className="text-xs text-muted-foreground font-normal">(нажмите чтобы развернуть)</span>
                   <ArrowRight className="h-3.5 w-3.5 ml-auto transition-transform group-open:rotate-90" />
                 </summary>
-                <div className="mt-3 p-4 rounded-xl border border-cyan-500/20 bg-cyan-500/5 space-y-2">
+                <div className="mt-3 p-4 rounded-xl border border-primary/20 bg-primary/5 space-y-2">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                     {VARIABLES_INFO.map((v) => (
                       <div key={v.key} className="flex items-start gap-2 p-2 rounded bg-background/30">
-                        <code className="text-cyan-300 bg-cyan-500/10 rounded px-1.5 py-0.5 font-mono shrink-0">{v.key}</code>
+                        <code className="text-primary bg-primary/10 rounded px-1.5 py-0.5 font-mono shrink-0">{v.key}</code>
                         <div className="flex-1 min-w-0">
                           <p className="text-foreground">{v.desc}</p>
                           <p className="text-muted-foreground text-[10px]">пример: <span className="text-foreground/80">{v.example}</span></p>
@@ -517,7 +510,7 @@ export function AutoRenewPage() {
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground mt-3">
-                    💡 Поддерживается HTML Telegram: <code className="text-amber-300 bg-amber-500/10 rounded px-1">&lt;b&gt;жирный&lt;/b&gt;</code>, <code className="text-amber-300 bg-amber-500/10 rounded px-1">&lt;i&gt;курсив&lt;/i&gt;</code>, <code className="text-amber-300 bg-amber-500/10 rounded px-1">&lt;code&gt;моноширинный&lt;/code&gt;</code>.
+                    Поддерживается HTML Telegram: <code className="text-amber-300 bg-amber-500/10 rounded px-1">&lt;b&gt;жирный&lt;/b&gt;</code>, <code className="text-amber-300 bg-amber-500/10 rounded px-1">&lt;i&gt;курсив&lt;/i&gt;</code>, <code className="text-amber-300 bg-amber-500/10 rounded px-1">&lt;code&gt;моноширинный&lt;/code&gt;</code>.
                   </p>
                 </div>
               </details>
@@ -548,7 +541,7 @@ export function AutoRenewPage() {
 function Badge({ label, icon: Icon, variant = "neutral" }: { label: string; icon: typeof Clock; variant?: "neutral" | "ok" | "muted" }) {
   const c = variant === "ok" ? "bg-emerald-500/20 text-emerald-200 border-emerald-500/30"
     : variant === "muted" ? "bg-white/[0.06] text-muted-foreground border-white/10"
-    : "bg-cyan-500/15 text-cyan-200 border-cyan-500/30";
+    : "bg-primary/15 text-primary border-primary/30";
   return (
     <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border backdrop-blur ${c}`}>
       <Icon className="h-3 w-3" /> {label}
@@ -556,13 +549,13 @@ function Badge({ label, icon: Icon, variant = "neutral" }: { label: string; icon
   );
 }
 
-function TimelineStep({ emoji, title, desc, count, badge, color }: {
-  emoji: string; title: string; desc: string; count?: number; badge?: string; color: string;
+function TimelineStep({ icon: Icon, title, desc, count, badge, color }: {
+  icon: typeof Clock; title: string; desc: string; count?: number; badge?: string; color: string;
 }) {
   return (
     <div className={`rounded-2xl border bg-gradient-to-br ${color} p-3 relative overflow-hidden`}>
       <div className="flex items-center gap-2">
-        <span className="text-2xl">{emoji}</span>
+        <span className="h-8 w-8 rounded-xl bg-background/50 border border-white/10 flex items-center justify-center shrink-0"><Icon className="h-4 w-4 text-foreground/80" /></span>
         <p className="font-semibold text-sm">{title}</p>
         {count != null && (
           <span className="ml-auto text-[10px] bg-background/60 rounded-full px-2 py-0.5 border border-white/10">
@@ -570,7 +563,7 @@ function TimelineStep({ emoji, title, desc, count, badge, color }: {
           </span>
         )}
         {badge && (
-          <span className="ml-auto text-[10px] bg-cyan-500/20 text-cyan-300 rounded-full px-2 py-0.5 border border-cyan-500/30">
+          <span className="ml-auto text-[10px] bg-primary/20 text-primary rounded-full px-2 py-0.5 border border-primary/30">
             {badge}
           </span>
         )}
@@ -602,13 +595,13 @@ function ToggleRow({ title, desc, checked, onChange, disabled }: {
   );
 }
 
-function NumberCard({ label, value, min, max, hint, emoji, onChange }: {
-  label: string; value: number; min: number; max: number; hint: string; emoji: string; onChange: (v: number) => void;
+function NumberCard({ label, value, min, max, hint, icon: Icon, onChange }: {
+  label: string; value: number; min: number; max: number; hint: string; icon: typeof Clock; onChange: (v: number) => void;
 }) {
   return (
-    <div className="rounded-xl border bg-white/[0.03] p-4 space-y-1.5 hover:bg-white/[0.05] transition-colors">
+    <div className="rounded-xl border border-white/10 bg-foreground/[0.02] p-4 space-y-1.5 hover:bg-foreground/[0.04] transition-colors">
       <div className="flex items-center gap-2">
-        <span className="text-lg">{emoji}</span>
+        <span className="h-7 w-7 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0"><Icon className="h-3.5 w-3.5 text-primary" /></span>
         <Label className="font-medium">{label}</Label>
       </div>
       <Input
@@ -630,7 +623,7 @@ function TabButton({ active, count, children, onClick }: { active: boolean; coun
       onClick={onClick}
       className={`inline-flex items-center text-xs sm:text-sm px-3 py-1.5 rounded-full border transition-all ${
         active
-          ? "bg-gradient-to-r from-fuchsia-500/30 to-violet-500/30 border-fuchsia-500/40 text-foreground"
+          ? "bg-primary/20 border-primary/50 text-foreground"
           : "bg-white/[0.03] border-white/10 text-muted-foreground hover:bg-white/[0.06]"
       }`}
     >
@@ -717,13 +710,13 @@ function NotifEditor({
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.94, opacity: 0, y: 20 }}
         transition={{ type: "spring", damping: 24 }}
-        className="bg-background border border-white/10 rounded-3xl max-w-4xl w-full max-h-[92vh] overflow-y-auto shadow-2xl"
+        className="bg-background/90 backdrop-blur-3xl border border-white/10 rounded-[2rem] max-w-4xl w-full max-h-[92vh] overflow-y-auto shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 bg-gradient-to-br from-fuchsia-500/25 via-pink-500/15 to-violet-500/25 px-6 py-4 border-b border-white/10 backdrop-blur">
+        <div className="sticky top-0 z-10 bg-gradient-to-br from-primary/15 via-violet-500/10 to-transparent px-6 py-4 border-b border-white/10 backdrop-blur-xl">
           <div className="flex items-center justify-between gap-3">
             <h3 className="font-semibold text-lg flex items-center gap-2">
-              <Wand2 className="h-5 w-5 text-fuchsia-300" />
+              <Wand2 className="h-5 w-5 text-primary" />
               {initial ? "Изменить шаблон" : "Новый шаблон уведомления"}
             </h3>
             <Button size="icon" variant="ghost" onClick={onClose}><X className="h-5 w-5" /></Button>
@@ -747,7 +740,7 @@ function NotifEditor({
                     <button
                       key={t} type="button"
                       onClick={() => setTriggerType(t)}
-                      className={`text-left p-3 rounded-xl border transition-all ${active ? `bg-gradient-to-br ${info.tabGradient} ring-2 ring-fuchsia-400/40` : "bg-white/[0.03] hover:bg-white/[0.06]"}`}
+                      className={`text-left p-3 rounded-xl border transition-all ${active ? `bg-gradient-to-br ${info.tabGradient} ring-2 ring-primary/40` : "bg-white/[0.03] hover:bg-white/[0.06]"}`}
                     >
                       <div className="flex items-center gap-2">
                         <Icon className={`h-4 w-4 ${info.iconColor}`} />
@@ -773,7 +766,7 @@ function NotifEditor({
                   <select
                     value={offsetUnit}
                     onChange={(e) => setOffsetUnit(e.target.value as "minutes" | "hours" | "days")}
-                    className="rounded-md border border-input bg-background px-3"
+                    className="rounded-xl border border-white/10 bg-foreground/[0.03] dark:bg-white/[0.02] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                   >
                     <option value="minutes">минут</option>
                     <option value="hours">часов</option>
@@ -790,7 +783,7 @@ function NotifEditor({
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
                 rows={9}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+                className="w-full rounded-xl border border-white/10 bg-foreground/[0.03] dark:bg-white/[0.02] px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/50"
                 placeholder={`⚠️ <b>Скоро автосписание</b>\n\nЧерез {days_left} {days_unit} с подписки «{tariff_name}» спишется {amount} {currency}.`}
               />
             </div>
@@ -804,16 +797,16 @@ function NotifEditor({
           {/* Preview column */}
           <div className="space-y-3">
             <Label className="flex items-center gap-2 text-sm">
-              <Eye className="h-4 w-4 text-cyan-300" /> Live preview (с подстановкой)
+              <Eye className="h-4 w-4 text-primary" /> Live preview (с подстановкой)
             </Label>
-            <div className="rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 to-indigo-500/10 p-5 min-h-[200px] backdrop-blur">
-              <div className="text-xs text-cyan-300 mb-2 font-mono">📱 Telegram</div>
+            <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 to-violet-500/10 p-5 min-h-[200px] backdrop-blur">
+              <div className="text-xs text-primary mb-2 font-mono">Telegram</div>
               <div className="bg-background/60 rounded-xl p-4 border border-white/5 text-sm whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: previewText || "<span class='text-muted-foreground italic'>Введите текст сообщения слева — здесь будет preview...</span>" }} />
             </div>
 
             <details className="group">
               <summary className="cursor-pointer text-xs font-semibold flex items-center gap-2 p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.06] transition-colors list-none">
-                <Info className="h-3.5 w-3.5 text-cyan-400" />
+                <Info className="h-3.5 w-3.5 text-primary" />
                 Подставить переменную в текст
               </summary>
               <div className="mt-2 grid grid-cols-1 gap-1">
@@ -824,7 +817,7 @@ function NotifEditor({
                     onClick={() => setMessageText((t) => t + v.key)}
                     className="text-left text-xs p-2 rounded bg-white/[0.03] hover:bg-white/[0.06] flex items-center gap-2 transition-colors"
                   >
-                    <code className="text-cyan-300 bg-cyan-500/10 rounded px-1.5 py-0.5 font-mono shrink-0">{v.key}</code>
+                    <code className="text-primary bg-primary/10 rounded px-1.5 py-0.5 font-mono shrink-0">{v.key}</code>
                     <span className="text-muted-foreground truncate">{v.desc}</span>
                   </button>
                 ))}
@@ -832,14 +825,14 @@ function NotifEditor({
             </details>
           </div>
 
-          {err && <p className="text-rose-300 text-sm lg:col-span-2">❌ {err}</p>}
+          {err && <p className="text-red-500 dark:text-red-400 text-sm lg:col-span-2">{err}</p>}
 
           <div className="flex gap-2 pt-2 lg:col-span-2">
-            <Button onClick={handleSave} disabled={saving} className="bg-gradient-to-r from-fuchsia-500 via-pink-500 to-violet-500 text-white flex-1 hover:opacity-90">
+            <Button onClick={handleSave} disabled={saving} className="flex-1 gap-2 rounded-xl">
               {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
               {initial ? "Сохранить изменения" : "Создать шаблон"}
             </Button>
-            <Button variant="outline" onClick={onClose}>Отмена</Button>
+            <Button variant="outline" onClick={onClose} className="rounded-xl">Отмена</Button>
           </div>
         </div>
       </motion.div>

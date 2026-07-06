@@ -501,6 +501,176 @@ export const api = {
     return request(`/admin/remna/nodes/${nodeUuid}/restart`, { method: "POST", token });
   },
 
+  // ─── Remna инфра-CRUD (2.8.0): ноды / сквады / хосты / config-профили ───
+  async remnaNodeCreate(token: string, body: RemnaNodeCreatePayload): Promise<unknown> {
+    return request("/admin/remna/nodes", { method: "POST", body: JSON.stringify(body), token });
+  },
+  async remnaNodeUpdate(token: string, uuid: string, body: Partial<RemnaNodeCreatePayload>): Promise<unknown> {
+    return request(`/admin/remna/nodes/${uuid}`, { method: "PATCH", body: JSON.stringify(body), token });
+  },
+  async remnaNodeDelete(token: string, uuid: string): Promise<unknown> {
+    return request(`/admin/remna/nodes/${uuid}`, { method: "DELETE", token });
+  },
+
+  async getRemnaConfigProfiles(token: string): Promise<RemnaConfigProfilesResponse> {
+    return request("/admin/remna/config-profiles", { token });
+  },
+  async getRemnaPubKey(token: string): Promise<{ response?: { pubKey?: string } }> {
+    return request("/admin/remna/pubkey", { token });
+  },
+  async getRemnaNodesMetrics(token: string): Promise<RemnaNodesMetricsResponse> {
+    return request("/admin/remna/nodes-metrics", { token });
+  },
+
+  async remnaNodeResetTraffic(token: string, uuid: string): Promise<unknown> {
+    return request(`/admin/remna/nodes/${uuid}/reset-traffic`, { method: "POST", token });
+  },
+
+  async remnaRestartAllNodes(token: string): Promise<unknown> {
+    return request("/admin/remna/nodes/restart-all", { method: "POST", token });
+  },
+
+  async getRemnaBandwidthStats(token: string): Promise<RemnaBandwidthStatsResponse> {
+    return request("/admin/remna/system/bandwidth", { token });
+  },
+
+  async getRemnaInfraBillingNodes(token: string): Promise<RemnaInfraBillingNodesResponse> {
+    return request("/admin/remna/infra-billing/nodes", { token });
+  },
+
+  async getRemnaSubTemplates(token: string): Promise<RemnaSubTemplatesResponse> {
+    return request("/admin/remna/sub-templates", { token });
+  },
+
+  async getRemnaHostTags(token: string): Promise<{ response?: { tags?: string[] } }> {
+    return request("/admin/remna/hosts/tags", { token });
+  },
+
+  async getRemnaInfraProviders(token: string): Promise<{ response?: { total?: number; providers?: { uuid: string; name: string; loginUrl?: string; faviconLink?: string }[] } }> {
+    return request("/admin/remna/infra-billing/providers", { token });
+  },
+  async remnaCreateInfraProvider(token: string, body: { name: string; loginUrl?: string; faviconLink?: string }): Promise<unknown> {
+    return request("/admin/remna/infra-billing/providers", { method: "POST", body: JSON.stringify(body), token });
+  },
+  async remnaDeleteInfraProvider(token: string, uuid: string): Promise<unknown> {
+    return request(`/admin/remna/infra-billing/providers/${uuid}`, { method: "DELETE", token });
+  },
+  async remnaCreateInfraBillingNode(token: string, body: { providerUuid: string; nodeUuid: string; name?: string; nextBillingAt: string }): Promise<unknown> {
+    return request("/admin/remna/infra-billing/nodes", { method: "POST", body: JSON.stringify(body), token });
+  },
+  async remnaUpdateInfraBillingNode(token: string, body: { uuid: string; nextBillingAt?: string; name?: string }): Promise<unknown> {
+    return request("/admin/remna/infra-billing/nodes", { method: "PATCH", body: JSON.stringify(body), token });
+  },
+  async remnaDeleteInfraBillingNode(token: string, uuid: string): Promise<unknown> {
+    return request(`/admin/remna/infra-billing/nodes/${uuid}`, { method: "DELETE", token });
+  },
+  async getRemnaSubSettings(token: string): Promise<{ response?: Record<string, unknown> }> {
+    return request("/admin/remna/subscription-settings", { token });
+  },
+  async remnaUpdateSubSettings(token: string, body: Record<string, unknown>): Promise<unknown> {
+    return request("/admin/remna/subscription-settings", { method: "PATCH", body: JSON.stringify(body), token });
+  },
+  async getRemnaUserDevices(token: string, uuid: string): Promise<{ response?: { total?: number; devices?: { hwid: string; platform?: string; osVersion?: string; deviceModel?: string; userAgent?: string; requestIp?: string; createdAt?: string }[] } }> {
+    return request(`/admin/remna/user-devices/${uuid}`, { token });
+  },
+  async remnaDeleteUserDevice(token: string, uuid: string, hwid: string): Promise<unknown> {
+    return request(`/admin/remna/user-devices/${uuid}/delete`, { method: "POST", body: JSON.stringify({ hwid }), token });
+  },
+  async remnaDeleteAllUserDevices(token: string, uuid: string): Promise<unknown> {
+    return request(`/admin/remna/user-devices/${uuid}/delete-all`, { method: "POST", token });
+  },
+  async remnaTruncateTorrent(token: string): Promise<unknown> {
+    return request("/admin/remna/torrent/truncate", { method: "DELETE", token });
+  },
+
+  async remnaUsersBulk(token: string, action: "reset-traffic" | "revoke" | "delete", uuids: string[]): Promise<unknown> {
+    return request(`/admin/remna/users/bulk/${action}`, { method: "POST", body: JSON.stringify({ uuids }), token });
+  },
+
+  async getRemnaNodePlugins(token: string): Promise<{ response?: unknown }> {
+    return request("/admin/remna/node-plugins", { token });
+  },
+
+  async remnaDeleteNodePlugin(token: string, uuid: string): Promise<unknown> {
+    return request(`/admin/remna/node-plugins/${uuid}`, { method: "DELETE", token });
+  },
+
+  async remnaUpdateNodePlugin(token: string, body: { uuid: string; name?: string }): Promise<unknown> {
+    return request("/admin/remna/node-plugins", { method: "PATCH", body: JSON.stringify(body), token });
+  },
+
+  async getRemnaSubTemplate(token: string, uuid: string): Promise<RemnaSubTemplateResponse> {
+    return request(`/admin/remna/sub-templates/${uuid}`, { token });
+  },
+
+  async remnaUpdateSubTemplate(token: string, body: { uuid: string; name?: string; templateJson?: unknown; encodedTemplateYaml?: string }): Promise<unknown> {
+    return request("/admin/remna/sub-templates", { method: "PATCH", body: JSON.stringify(body), token });
+  },
+
+  async getRemnaHwidStats(token: string): Promise<RemnaHwidStatsResponse> {
+    return request("/admin/remna/hwid/stats", { token });
+  },
+
+  async getRemnaHwidTopUsers(token: string): Promise<RemnaHwidTopUsersResponse> {
+    return request("/admin/remna/hwid/top-users", { token });
+  },
+
+  async getRemnaRecap(token: string): Promise<RemnaRecapResponse> {
+    return request("/admin/remna/recap", { token });
+  },
+
+  async remnaHostsBulk(token: string, action: "enable" | "disable" | "delete", uuids: string[]): Promise<unknown> {
+    return request(`/admin/remna/hosts/bulk/${action}`, { method: "POST", body: JSON.stringify({ uuids }), token });
+  },
+
+  async getRemnaTorrentReports(token: string): Promise<{ response?: unknown }> {
+    return request("/admin/remna/torrent/reports", { token });
+  },
+
+  async getRemnaTorrentStats(token: string): Promise<{ response?: unknown }> {
+    return request("/admin/remna/torrent/stats", { token });
+  },
+
+  async remnaDropConnections(token: string, dropBy: unknown): Promise<unknown> {
+    return request("/admin/remna/drop-connections", { method: "POST", body: JSON.stringify({ dropBy }), token });
+  },
+
+  async getRemnaNodeUsersUsage(token: string, uuid: string, days = 7): Promise<RemnaNodeUsersUsageResponse> {
+    return request(`/admin/remna/nodes/${uuid}/users-usage?days=${days}`, { token });
+  },
+  async remnaConfigProfileCreate(token: string, body: { name: string; config: unknown }): Promise<unknown> {
+    return request("/admin/remna/config-profiles", { method: "POST", body: JSON.stringify(body), token });
+  },
+  async remnaConfigProfileUpdate(token: string, uuid: string, body: { name?: string; config?: unknown }): Promise<unknown> {
+    return request(`/admin/remna/config-profiles/${uuid}`, { method: "PATCH", body: JSON.stringify(body), token });
+  },
+  async remnaConfigProfileDelete(token: string, uuid: string): Promise<unknown> {
+    return request(`/admin/remna/config-profiles/${uuid}`, { method: "DELETE", token });
+  },
+
+  async remnaSquadCreate(token: string, body: { name: string; inbounds: string[] }): Promise<unknown> {
+    return request("/admin/remna/squads/internal", { method: "POST", body: JSON.stringify(body), token });
+  },
+  async remnaSquadUpdate(token: string, uuid: string, body: { name?: string; inbounds?: string[] }): Promise<unknown> {
+    return request(`/admin/remna/squads/internal/${uuid}`, { method: "PATCH", body: JSON.stringify(body), token });
+  },
+  async remnaSquadDelete(token: string, uuid: string): Promise<unknown> {
+    return request(`/admin/remna/squads/internal/${uuid}`, { method: "DELETE", token });
+  },
+
+  async getRemnaHosts(token: string): Promise<RemnaHostsResponse> {
+    return request("/admin/remna/hosts", { token });
+  },
+  async remnaHostCreate(token: string, body: Record<string, unknown>): Promise<unknown> {
+    return request("/admin/remna/hosts", { method: "POST", body: JSON.stringify(body), token });
+  },
+  async remnaHostUpdate(token: string, uuid: string, body: Record<string, unknown>): Promise<unknown> {
+    return request(`/admin/remna/hosts/${uuid}`, { method: "PATCH", body: JSON.stringify(body), token });
+  },
+  async remnaHostDelete(token: string, uuid: string): Promise<unknown> {
+    return request(`/admin/remna/hosts/${uuid}`, { method: "DELETE", token });
+  },
+
   // ——— Прокси-ноды ———
   async getProxyNodes(token: string): Promise<{ items: ProxyNodeListItem[] }> {
     return request("/admin/proxy/nodes", { token });
@@ -2993,6 +3163,10 @@ export type UpdateSettingsPayload = {
   smtpPassword?: string | null;
   smtpFromEmail?: string | null;
   smtpFromName?: string | null;
+  mailProvider?: "smtp" | "resend";
+  resendApiKey?: string | null;
+  resendFromEmail?: string | null;
+  passwordResetEnabled?: boolean;
   publicAppUrl?: string | null;
   telegramBotToken?: string | null;
   telegramBotUsername?: string | null;
@@ -3106,6 +3280,10 @@ export type UpdateSettingsPayload = {
   autoBroadcastCron?: string | null;
   adminFrontNotificationsEnabled?: boolean;
   skipEmailVerification?: boolean;
+  onboardingEmailRequired?: boolean;
+  stealthAccent?: string | null;
+  stealthHeroImage?: string | null;
+  multiSubscriptionsEnabled?: boolean;
   signupProtectionEnabled?: boolean;
   emailDomainBlocklist?: string;
   emailPatternBlocklist?: string;
@@ -3472,6 +3650,10 @@ export interface AdminSettings {
   smtpPassword?: string | null;
   smtpFromEmail?: string | null;
   smtpFromName?: string | null;
+  mailProvider?: "smtp" | "resend";
+  resendApiKey?: string | null;
+  resendFromEmail?: string | null;
+  passwordResetEnabled?: boolean;
   publicAppUrl?: string | null;
   telegramBotToken?: string | null;
   defaultAutoRenewEnabled?: boolean;
@@ -3615,6 +3797,10 @@ export interface AdminSettings {
   adminFrontNotificationsEnabled?: boolean;
   /** Регистрация без подтверждения почты */
   skipEmailVerification?: boolean;
+  onboardingEmailRequired?: boolean;
+  stealthAccent?: string | null;
+  stealthHeroImage?: string | null;
+  multiSubscriptionsEnabled?: boolean;
   /** заявки на вывод реф. баланса: вкл/выкл. */
   withdrawalsEnabled?: boolean;
   /** мин. сумма заявки на вывод (₽). */
@@ -4105,6 +4291,123 @@ export interface ProxySlotAdminItem {
 
 export type RemnaNodesResponse = { response?: RemnaNode[] };
 
+/** GET /admin/remna/nodes-metrics — метрики нод из Remna: инбаунды/аутбаунды + провайдер. */
+/** Сводка трафика панели Remnawave (строки уже отформатированы ремной). */
+export type RemnaBandwidthStatsResponse = {
+  response?: {
+    bandwidthLastTwoDays?: { current: string; previous: string; difference: string };
+    bandwidthLastSevenDays?: { current: string; previous: string; difference: string };
+    bandwidthCalendarMonth?: { current: string; previous: string; difference: string };
+    /** живая 2.8.0 шлёт этот ключ вместо bandwidthCalendarMonth из спеки */
+    bandwidthLast30Days?: { current: string; previous: string; difference: string };
+    bandwidthCurrentYear?: { current: string; previous: string; difference: string };
+  };
+};
+
+/** Инфра-биллинг: ближайшие оплаты серверов (API 2.8). */
+export type RemnaInfraBillingNodesResponse = {
+  response?: {
+    totalBillingNodes?: number;
+    billingNodes?: {
+      uuid: string;
+      provider?: { uuid: string; name?: string; loginUrl?: string; faviconLink?: string } | null;
+      node?: { uuid: string; name?: string; countryCode?: string } | null;
+      nextBillingAt?: string;
+    }[];
+  };
+};
+
+export type RemnaTemplateType = "XRAY_JSON" | "XRAY_BASE64" | "MIHOMO" | "STASH" | "CLASH" | "SINGBOX";
+export type RemnaSubTemplate = { uuid: string; name: string; templateType: RemnaTemplateType; viewPosition?: number };
+export type RemnaSubTemplatesResponse = { response?: { total?: number; templates?: RemnaSubTemplate[] } };
+export type RemnaSubTemplateResponse = { response?: RemnaSubTemplate & { templateJson?: unknown; encodedTemplateYaml?: string } };
+
+export type RemnaHwidStatsResponse = {
+  response?: {
+    totalDevices?: number;
+    byPlatform?: { platform: string; count: number; byApp?: { app: string; count: number }[] }[];
+  };
+};
+export type RemnaHwidTopUsersResponse = {
+  response?: { users?: { userUuid: string; id?: number; username: string; devicesCount: number }[] };
+};
+
+export type RemnaRecapResponse = {
+  response?: {
+    thisMonth?: { users?: number; traffic?: string };
+    total?: { users?: number; nodes?: number; traffic?: string; nodesRam?: string; nodesCpuCores?: number; distinctCountries?: number };
+    version?: string;
+    initDate?: string;
+  };
+};
+
+export type RemnaNodesMetricsResponse = {
+  response?: {
+    nodes?: {
+      nodeUuid: string;
+      nodeName: string;
+      countryEmoji?: string;
+      providerName?: string;
+      usersOnline?: number;
+      inboundsStats?: { tag: string; upload: string; download: string }[];
+      outboundsStats?: { tag: string; upload: string; download: string }[];
+    }[];
+  };
+};
+
+export interface RemnaNodeCreatePayload {
+  name: string;
+  address: string;
+  port?: number | null;
+  countryCode?: string;
+  isTrafficTrackingActive?: boolean;
+  trafficLimitBytes?: number | null;
+  trafficResetDay?: number | null;
+  notifyPercent?: number | null;
+  consumptionMultiplier?: number | null;
+  note?: string | null;
+  configProfile: { activeConfigProfileUuid: string; activeInbounds: string[] };
+}
+
+export interface RemnaConfigProfileInbound {
+  uuid: string;
+  tag?: string;
+  type?: string;
+  network?: string | null;
+  security?: string | null;
+  port?: number | null;
+}
+export interface RemnaConfigProfile {
+  uuid: string;
+  name: string;
+  inbounds?: RemnaConfigProfileInbound[];
+  nodes?: { uuid: string; name?: string }[];
+  config?: unknown;
+}
+export type RemnaConfigProfilesResponse = { response?: { configProfiles?: RemnaConfigProfile[]; total?: number } };
+
+export interface RemnaHost {
+  uuid: string;
+  remark?: string;
+  address?: string;
+  port?: number | null;
+  isDisabled?: boolean;
+  inbound?: { configProfileUuid?: string; configProfileInboundUuid?: string } | null;
+  sni?: string | null;
+  host?: string | null;
+  path?: string | null;
+  tags?: string[];
+}
+export type RemnaHostsResponse = { response?: RemnaHost[] | { hosts?: RemnaHost[] } };
+
+export type RemnaNodeUsersUsageResponse = {
+  response?: {
+    categories?: string[];
+    sparklineData?: number[];
+    topUsers?: { color: string; username: string; total: number }[];
+  };
+};
+
 export interface ProxyNodeListItem {
   id: string;
   name: string;
@@ -4555,8 +4858,9 @@ export interface PublicTariffCategory {
 export interface TariffConversionPreview {
   willConvert: boolean;
   /** extend — куплен ТОТ ЖЕ тариф: подписка просто продлевается (дни складываются);
-   *  convert — другой тариф: конвертация (смена тарифа/сквадов, pro-rata остатка). */
-  mode?: "extend" | "convert";
+   *  convert — другой тариф: конвертация (смена тарифа/сквадов, pro-rata остатка);
+   *  replace — глобальный single-режим (мульти выкл): жёсткая замена (старые дни сгорают). */
+  mode?: "extend" | "convert" | "replace";
   subscription?: {
     id: string;
     index: number;
@@ -4568,6 +4872,8 @@ export interface TariffConversionPreview {
   convertedDays?: number;
   purchasedDays?: number;
   totalDays?: number;
+  /** single-режим: сколько ДРУГИХ подписок клиента будет удалено при консолидации (кроме этой). */
+  othersToRemove?: number;
   /** выбор судьбы доп. устройств (конвертация и same-tariff продление). */
   extras?: {
     extraDevices: number;
@@ -4851,6 +5157,10 @@ export interface PublicConfig {
   googleAnalyticsId?: string | null;
   yandexMetrikaId?: string | null;
   skipEmailVerification?: boolean;
+  onboardingEmailRequired?: boolean;
+  stealthAccent?: string | null;
+  stealthHeroImage?: string | null;
+  multiSubscriptionsEnabled?: boolean;
   /** заявки на вывод реф. баланса: вкл/выкл + мин. сумма. */
   withdrawalsEnabled?: boolean;
   withdrawalMinAmount?: number;

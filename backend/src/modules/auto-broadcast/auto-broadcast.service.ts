@@ -12,7 +12,7 @@
 
 import { prisma } from "../../db.js";
 import { getSystemConfig } from "../client/client.service.js";
-import { sendEmail } from "../mail/mail.service.js";
+import { sendEmail, isMailConfigured, mailConfigFromSystem } from "../mail/mail.service.js";
 import { proxyFetch } from "../proxy-util/proxy-fetch.js";
 import { getProxyUrl } from "../proxy-util/get-proxy-url.js";
 
@@ -718,19 +718,9 @@ export async function runRule(ruleId: string, opts?: { onlyClientId?: string }):
     );
   }
 
-  const smtpConfig = doEmail
-    ? {
-        host: config.smtpHost || "",
-        port: config.smtpPort ?? 587,
-        secure: config.smtpSecure ?? false,
-        user: config.smtpUser ?? null,
-        password: config.smtpPassword ?? null,
-        fromEmail: config.smtpFromEmail ?? null,
-        fromName: config.smtpFromName ?? null,
-      }
-    : null;
+  const smtpConfig = doEmail ? mailConfigFromSystem(config) : null;
 
-  if (doEmail && (!smtpConfig?.host || !smtpConfig?.fromEmail)) {
+  if (doEmail && (!smtpConfig || !isMailConfigured(smtpConfig))) {
     console.error(
       `${LOG_PREFIX} Rule "${rule.name}": email channel selected but SMTP is not configured (host or fromEmail missing)!`,
     );
@@ -864,7 +854,7 @@ export async function runRule(ruleId: string, opts?: { onlyClientId?: string }):
     }
 
     // Email (пропускаем, если клиенту уже отправили в этом прогоне — анти-задвоение)
-    if (doEmail && smtpConfig?.host && smtpConfig?.fromEmail && c.email?.trim() && !alreadyMessagedClient) {
+    if (doEmail && smtpConfig && isMailConfigured(smtpConfig) && c.email?.trim() && !alreadyMessagedClient) {
       try {
         const perClientHtml = `<!DOCTYPE html><html><body style="font-family: sans-serif;">${perClientMessage.replace(/\n/g, "<br>\n")}</body></html>`;
         const res = await sendEmail(smtpConfig, c.email.trim(), subject, perClientHtml);

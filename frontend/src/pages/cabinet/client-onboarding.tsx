@@ -523,6 +523,16 @@ export function ClientOnboardingPage() {
                         <>{emailVerificationRequired ? "Отправить ссылку" : "Далее"} <ChevronRight className="h-5 w-5" /></>
                       )}
                     </Button>
+                    {!config?.onboardingEmailRequired && (
+                      <button
+                        type="button"
+                        onClick={() => { setEmailError(""); goTo(nextStepAfter("email")); }}
+                        disabled={emailLoading}
+                        className="mt-3 w-full inline-flex items-center justify-center gap-1 rounded-xl px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors disabled:opacity-50"
+                      >
+                        Пропустить, привязать позже
+                      </button>
+                    )}
                   </>
                 ) : (
                   <motion.div

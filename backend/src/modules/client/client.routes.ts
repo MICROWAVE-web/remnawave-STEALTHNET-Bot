@@ -5,6 +5,7 @@ import { env } from "../../config/index.js";
 import { Router, type Request } from "express";
 import { z } from "zod";
 import { prisma, createPayment, asClientUncheckedCreate, asClientWhere, asClientSelect, asPaymentUncheckedCreate, asTelegramAuthUpdate, type TelegramAuthTokenRecord, type ClientEmptyCloneRow } from "../../db.js";
+import { mergeClients, isBotOnlyAccount } from "./merge-clients.service.js";
 import {
   hashPassword,
   verifyPassword,
@@ -26,7 +27,7 @@ import {
 } from "../notification/telegram-notify.service.js";
 import { requireClientAuth } from "./client.middleware.js";
 import { remnaCreateUser, remnaUpdateUser, isRemnaConfigured, remnaGetUser, remnaGetUserByUsername, remnaGetUserByEmail, remnaGetUserByTelegramId, extractRemnaUuid, remnaUsernameFromClient, remnaGetUserHwidDevices, remnaDeleteUserHwidDevice, encryptSubscriptionUrlInPlace, remnaRevokeUserSubscription } from "../remna/remna.client.js";
-import { isSmtpConfigured, sendEmail } from "../mail/mail.service.js";
+import { isSmtpConfigured, isMailConfigured, mailConfigFromSystem, sendEmail } from "../mail/mail.service.js";
 import { renderEmailTemplate } from "../email-templates/email-templates.service.js";
 import { signClientPasswordResetToken, verifyClientPasswordResetToken } from "../auth/auth.service.js";
 import { createPlategaTransaction, isPlategaConfigured } from "../platega/platega.service.js";
@@ -193,7 +194,7 @@ const registerSchema = z.object({
 clientAuthRouter.post("/register", async (req, res) => {
   const body = registerSchema.safeParse(req.body);
   if (!body.success) {
-    return res.status(400).json({ message: "Invalid input", errors: body.error.flatten() });
+    return res.status(400).json({ message: "Проверьте введённые данные", errors: body.error.flatten() });
   }
 
   const data = body.data;
@@ -201,20 +202,20 @@ clientAuthRouter.post("/register", async (req, res) => {
   const hasTelegram = data.telegramId;
 
   if (!hasEmail && !hasTelegram) {
-    return res.status(400).json({ message: "Provide email+password or telegramId" });
+    return res.status(400).json({ message: "Укажите email и пароль или войдите через Telegram" });
   }
 
   // Какому клону принадлежит регистрация — определяем по X-Telegram-Bot-Token
   // (бот шлёт свой токен) либо берём primary (веб-регистрация).
   const requestBot = await resolveBotForClientRequest(req);
   if (!requestBot) {
-    return res.status(503).json({ message: "Primary bot not configured. Run migrations." });
+    return res.status(503).json({ message: "Сервис временно недоступен. Обратитесь в поддержку." });
   }
 
   // Регистрация по email: создаём ожидание и отправляем письмо с ссылкой
   if (hasEmail) {
     const existing = await prisma.client.findUnique({ where: { email: data.email! } });
-    if (existing) return res.status(400).json({ message: "Email already registered" });
+    if (existing) return res.status(400).json({ message: "Этот email уже зарегистрирован" });
 
     const config = await getSystemConfig();
 
@@ -302,22 +303,14 @@ clientAuthRouter.post("/register", async (req, res) => {
       return res.status(201).json({ token, client: toClientShape(client) });
     }
 
-    const smtpConfig = {
-      host: config.smtpHost || "",
-      port: config.smtpPort,
-      secure: config.smtpSecure,
-      user: config.smtpUser,
-      password: config.smtpPassword,
-      fromEmail: config.smtpFromEmail,
-      fromName: config.smtpFromName,
-    };
-    if (!isSmtpConfigured(smtpConfig)) {
-      return res.status(503).json({ message: "Email registration is not configured. Contact administrator." });
+    const smtpConfig = mailConfigFromSystem(config);
+    if (!isMailConfigured(smtpConfig)) {
+      return res.status(503).json({ message: "Регистрация по email не настроена. Обратитесь к администратору." });
     }
 
     const appUrl = (config.publicAppUrl || "").replace(/\/$/, "");
     if (!appUrl) {
-      return res.status(503).json({ message: "Public app URL is not set in settings." });
+      return res.status(503).json({ message: "Не задан публичный адрес приложения в настройках." });
     }
 
     const verificationToken = randomBytes(32).toString("hex");
@@ -364,10 +357,18 @@ clientAuthRouter.post("/register", async (req, res) => {
     console.log(`[register] Email send result to ${data.email}:`, sendResult);
     if (!sendResult.ok) {
       await prisma.pendingEmailRegistration.deleteMany({ where: { verificationToken } }).catch(() => {});
-      return res.status(500).json({ message: "Failed to send verification email. Try again later." });
+      return res.status(500).json({ message: "Не удалось отправить письмо подтверждения. Попробуйте позже." });
     }
 
-    return res.status(201).json({ message: "Check your email to complete registration", requiresVerification: true });
+    return res.status(201).json({ message: "Проверьте почту, чтобы завершить регистрацию", requiresVerification: true });
+  }
+
+  // 🔒 SECURITY: вход/регистрация по telegramId доверяется ТОЛЬКО аутентифицированному боту.
+  // Без этого любой слал {telegramId:<жертва>} БЕЗ токена и получал сессию любого аккаунта.
+  const tgAuthToken = extractBotTokenFromRequest(req as Parameters<typeof extractBotTokenFromRequest>[0]);
+  const tgAuthBot = tgAuthToken ? await getBotByToken(tgAuthToken) : null;
+  if (!tgAuthBot) {
+    return res.status(401).json({ message: "Вход через Telegram требует авторизации бота" });
   }
 
   // Регистрация / вход по Telegram (используется ботом). 2FA не требуем — только для входа на сайте.
@@ -382,10 +383,10 @@ clientAuthRouter.post("/register", async (req, res) => {
         if (blConfig.blacklistEnabled) {
           const { checkAndBlockIfBlacklisted } = await import("../blacklist/blacklist.service.js");
           const blocked = await checkAndBlockIfBlacklisted(data.telegramId!);
-          if (blocked) return res.status(403).json({ message: "Account is blocked" });
+          if (blocked) return res.status(403).json({ message: "Аккаунт заблокирован" });
         }
       }
-      if (existing.isBlocked) return res.status(403).json({ message: "Account is blocked" });
+      if (existing.isBlocked) return res.status(403).json({ message: "Аккаунт заблокирован" });
       // isNewClient=false — клиент уже был
       // (бот не будет fire after_registration broadcast).
       return res.json({ token: signClientToken(existing.id), client: toClientShape(existing), isNewClient: false });
@@ -437,7 +438,7 @@ clientAuthRouter.post("/register", async (req, res) => {
     if (blConfig2.blacklistEnabled) {
       const { checkAndBlockIfBlacklisted } = await import("../blacklist/blacklist.service.js");
       const blocked = await checkAndBlockIfBlacklisted(data.telegramId);
-      if (blocked) return res.status(403).json({ message: "Account is blocked" });
+      if (blocked) return res.status(403).json({ message: "Аккаунт заблокирован" });
     }
   }
 
@@ -450,7 +451,7 @@ clientAuthRouter.post("/register", async (req, res) => {
 const verifyLinkEmailSchema = z.object({ token: z.string().min(1) });
 clientAuthRouter.post("/verify-link-email", async (req, res) => {
   const parse = verifyLinkEmailSchema.safeParse(req.body);
-  if (!parse.success) return res.status(400).json({ message: "Invalid input" });
+  if (!parse.success) return res.status(400).json({ message: "Проверьте введённые данные" });
   const { token } = parse.data;
   const pending = await prisma.pendingEmailLink.findUnique({ where: { verificationToken: token } });
   if (!pending) return res.status(400).json({ message: "Недействительная или просроченная ссылка" });
@@ -458,15 +459,36 @@ clientAuthRouter.post("/verify-link-email", async (req, res) => {
     await prisma.pendingEmailLink.deleteMany({ where: { id: pending.id } }).catch(() => {});
     return res.status(400).json({ message: "Ссылка просрочена. Запросите привязку почты снова." });
   }
-  const existingByEmail = await prisma.client.findUnique({ where: { email: pending.email } });
+  const existingByEmail = await prisma.client.findUnique({
+    where: { email: pending.email },
+    select: { id: true, telegramId: true },
+  });
+  const clientSelect = { id: true, email: true, telegramId: true, telegramUsername: true, preferredLang: true, preferredCurrency: true, balance: true, referralCode: true, referralPercent: true, remnawaveUuid: true, trialUsed: true, isBlocked: true, autoRenewEnabled: true, autoRenewTariffId: true, yoomoneyAccessToken: true, totpEnabled: true, createdAt: true, onboardingCompleted: true } as const;
   if (existingByEmail && existingByEmail.id !== pending.clientId) {
+    // Почта уже принадлежит другому аккаунту. Владелец подтвердил, что почта его
+    // (перешёл по ссылке из письма) — значит это его второй аккаунт. Сливаем его
+    // в инициатора привязки (схема Алекса: инициатор — основной, дубль удаляется).
+    // Отказ только если у владельца почты уже есть Telegram (полноценный аккаунт).
+    if (existingByEmail.telegramId) {
+      await prisma.pendingEmailLink.deleteMany({ where: { id: pending.id } }).catch(() => {});
+      return res.status(400).json({ message: "Эта почта привязана к другому аккаунту с Telegram. Объединение невозможно — обратитесь в поддержку." });
+    }
+    try {
+      await mergeClients(pending.clientId, existingByEmail.id, { email: pending.email });
+    } catch (e) {
+      console.error("[verify-link-email] merge failed:", e);
+      await prisma.pendingEmailLink.deleteMany({ where: { id: pending.id } }).catch(() => {});
+      return res.status(500).json({ message: "Не удалось объединить аккаунты. Обратитесь в поддержку." });
+    }
     await prisma.pendingEmailLink.deleteMany({ where: { id: pending.id } }).catch(() => {});
-    return res.status(400).json({ message: "Эта почта уже привязана к другому аккаунту." });
+    const merged = await prisma.client.findUnique({ where: { id: pending.clientId }, select: clientSelect });
+    if (!merged) return res.status(500).json({ message: "Не удалось завершить привязку" });
+    return res.json(buildAuthResponse(merged));
   }
   const client = await prisma.client.update({
     where: { id: pending.clientId },
     data: { email: pending.email },
-    select: { id: true, email: true, telegramId: true, telegramUsername: true, preferredLang: true, preferredCurrency: true, balance: true, referralCode: true, referralPercent: true, remnawaveUuid: true, trialUsed: true, isBlocked: true, autoRenewEnabled: true, autoRenewTariffId: true, yoomoneyAccessToken: true, totpEnabled: true, createdAt: true, onboardingCompleted: true },
+    select: clientSelect,
   });
   await prisma.pendingEmailLink.deleteMany({ where: { id: pending.id } }).catch(() => {});
   const auth = buildAuthResponse(client);
@@ -476,16 +498,16 @@ clientAuthRouter.post("/verify-link-email", async (req, res) => {
 const verifyEmailSchema = z.object({ token: z.string().min(1) });
 clientAuthRouter.post("/verify-email", async (req, res) => {
   const parse = verifyEmailSchema.safeParse(req.body);
-  if (!parse.success) return res.status(400).json({ message: "Invalid input" });
+  if (!parse.success) return res.status(400).json({ message: "Проверьте введённые данные" });
   const { token } = parse.data;
 
   const pending = await prisma.pendingEmailRegistration.findUnique({
     where: { verificationToken: token },
   });
-  if (!pending) return res.status(400).json({ message: "Invalid or expired link" });
+  if (!pending) return res.status(400).json({ message: "Ссылка недействительна или устарела" });
   if (new Date() > pending.expiresAt) {
     await prisma.pendingEmailRegistration.delete({ where: { id: pending.id } }).catch(() => {});
-    return res.status(400).json({ message: "Link expired. Please register again." });
+    return res.status(400).json({ message: "Ссылка истекла — зарегистрируйтесь заново." });
   }
 
   const existingClient = await prisma.client.findUnique({
@@ -509,7 +531,7 @@ clientAuthRouter.post("/verify-email", async (req, res) => {
   // Email-регистрация — всегда primary bot (веб-кабинет, без привязки к клону).
   const primaryBot = await getPrimaryBot();
   if (!primaryBot) {
-    return res.status(503).json({ message: "Primary bot not configured. Run migrations." });
+    return res.status(503).json({ message: "Сервис временно недоступен. Обратитесь в поддержку." });
   }
 
   const configForAutoRenew = await getSystemConfig();
@@ -553,22 +575,22 @@ const loginSchema = z.object({
 clientAuthRouter.post("/login", async (req, res) => {
   const body = loginSchema.safeParse(req.body);
   if (!body.success) {
-    return res.status(400).json({ message: "Invalid input" });
+    return res.status(400).json({ message: "Проверьте введённые данные" });
   }
 
   const client = await prisma.client.findUnique({ where: { email: body.data.email } });
   if (!client || !client.passwordHash || client.isBlocked) {
-    return res.status(401).json({ message: "Invalid email or password" });
+    return res.status(401).json({ message: "Неверный email или пароль" });
   }
 
   const valid = await verifyPassword(body.data.password, client.passwordHash);
-  if (!valid) return res.status(401).json({ message: "Invalid email or password" });
+  if (!valid) return res.status(401).json({ message: "Неверный email или пароль" });
 
   const full = await prisma.client.findUnique({
     where: { id: client.id },
     select: { id: true, email: true, telegramId: true, telegramUsername: true, preferredLang: true, preferredCurrency: true, balance: true, referralCode: true, referralPercent: true, remnawaveUuid: true, trialUsed: true, isBlocked: true, autoRenewEnabled: true, autoRenewTariffId: true, yoomoneyAccessToken: true, totpEnabled: true, createdAt: true, onboardingCompleted: true },
   });
-  if (!full) return res.status(401).json({ message: "Invalid email or password" });
+  if (!full) return res.status(401).json({ message: "Неверный email или пароль" });
   const auth = buildAuthResponse(full);
   return res.json(auth);
 });
@@ -626,12 +648,9 @@ clientAuthRouter.post("/forgot-password", async (req, res) => {
     });
     if (!client || !client.passwordHash || client.isBlocked) return respondOk();
     const config = await getSystemConfig();
-    const smtpConfig = {
-      host: config.smtpHost || "", port: config.smtpPort, secure: config.smtpSecure,
-      user: config.smtpUser, password: config.smtpPassword, fromEmail: config.smtpFromEmail, fromName: config.smtpFromName,
-    };
+    const smtpConfig = mailConfigFromSystem(config);
     const appUrl = (config.publicAppUrl || "").replace(/\/$/, "");
-    if (!isSmtpConfigured(smtpConfig) || !appUrl) return respondOk();
+    if (!isMailConfigured(smtpConfig) || !appUrl) return respondOk();
     const token = signClientPasswordResetToken({ clientId: client.id, pv: client.passwordHash.slice(-12) }, env.JWT_SECRET);
     const resetLink = `${appUrl}/cabinet/reset-password?token=${encodeURIComponent(token)}`;
     const resetTpl = await renderEmailTemplate("password_reset", {
@@ -670,16 +689,16 @@ const telegramMiniappSchema = z.object({ initData: z.string().min(1) });
 clientAuthRouter.post("/telegram-miniapp", async (req, res) => {
   const body = telegramMiniappSchema.safeParse(req.body);
   if (!body.success) {
-    return res.status(400).json({ message: "Invalid input", errors: body.error.flatten() });
+    return res.status(400).json({ message: "Проверьте введённые данные", errors: body.error.flatten() });
   }
   // v5.0.0: Mini App initData подписан токеном единственного бота инсталляции
   // (process.env.BOT_TOKEN). Раньше проверяли по каждому активному клону.
   const botToken = (process.env.BOT_TOKEN ?? "").trim();
   if (!botToken || !validateTelegramInitData(body.data.initData, botToken)) {
-    return res.status(401).json({ message: "Invalid or expired Telegram data" });
+    return res.status(401).json({ message: "Данные Telegram недействительны или устарели" });
   }
   const tgUser = parseTelegramUser(body.data.initData);
-  if (!tgUser) return res.status(400).json({ message: "Missing user in init data" });
+  if (!tgUser) return res.status(400).json({ message: "Не удалось получить данные пользователя Telegram" });
 
   const telegramId = String(tgUser.id);
   const telegramUsername = tgUser.username?.trim() ?? null;
@@ -688,7 +707,7 @@ clientAuthRouter.post("/telegram-miniapp", async (req, res) => {
     select: { id: true, email: true, telegramId: true, telegramUsername: true, preferredLang: true, preferredCurrency: true, balance: true, referralCode: true, referralPercent: true, remnawaveUuid: true, trialUsed: true, isBlocked: true, autoRenewEnabled: true, autoRenewTariffId: true, yoomoneyAccessToken: true, totpEnabled: true, createdAt: true, onboardingCompleted: true, passwordHash: true },
   });
   if (existing) {
-    if (existing.isBlocked) return res.status(403).json({ message: "Account is blocked" });
+    if (existing.isBlocked) return res.status(403).json({ message: "Аккаунт заблокирован" });
     // см. /telegram-login-check — тот же триггер.
     // passwordHash из условия убран: у бот-юзеров может быть dummy-пароль.
     if (existing.onboardingCompleted && !existing.email) {
@@ -769,7 +788,7 @@ clientAuthRouter.get("/me", requireClientAuth, async (req, res) => {
       personalDiscountPercent: true,
     },
   });
-  if (!full) return res.status(401).json({ message: "Unauthorized" });
+  if (!full) return res.status(401).json({ message: "Требуется авторизация" });
   return res.json(toClientShape(full));
 });
 
@@ -790,7 +809,7 @@ clientAuthRouter.post("/fire-on-registration", requireClientAuth, async (req, re
     return res.json({ ok: true, rulesProcessed: results.length, sent: totalSent });
   } catch (e) {
     console.error("[fire-on-registration] failed:", e);
-    return res.status(500).json({ ok: false, message: e instanceof Error ? e.message : "Internal error" });
+    return res.status(500).json({ ok: false, message: e instanceof Error ? e.message : "Внутренняя ошибка" });
   }
 });
 
@@ -866,10 +885,10 @@ function buildAuthResponse(c: { id: string; totpEnabled?: boolean } & Parameters
 const googleAuthSchema = z.object({ idToken: z.string().min(1) });
 clientAuthRouter.post("/google", async (req, res) => {
   const parse = googleAuthSchema.safeParse(req.body);
-  if (!parse.success) return res.status(400).json({ message: "Invalid input" });
+  if (!parse.success) return res.status(400).json({ message: "Проверьте введённые данные" });
   const config = await getSystemConfig();
   if (!config.googleLoginEnabled || !config.googleClientId) {
-    return res.status(403).json({ message: "Google login is not enabled" });
+    return res.status(403).json({ message: "Вход через Google отключён" });
   }
   let payload: { sub?: string; email?: string; email_verified?: boolean } | undefined;
   try {
@@ -882,10 +901,13 @@ clientAuthRouter.post("/google", async (req, res) => {
     payload = ticket.getPayload();
   } catch (err) {
     console.error("[Google OAuth] verify error:", err);
-    return res.status(401).json({ message: "Invalid Google token" });
+    return res.status(401).json({ message: "Недействительный токен Google" });
   }
-  if (!payload?.sub) return res.status(401).json({ message: "Invalid Google token" });
+  if (!payload?.sub) return res.status(401).json({ message: "Недействительный токен Google" });
   const googleId = payload.sub;
+  // 🔒 SECURITY: email из Google доверяем ТОЛЬКО при email_verified=true (иначе линковка
+  // по email к существующему аккаунту = захват).
+  const emailVerified = payload.email_verified === true;
   const googleEmail = payload.email ?? null;
 
   const existing = await prisma.client.findUnique({
@@ -893,18 +915,18 @@ clientAuthRouter.post("/google", async (req, res) => {
     select: { id: true, email: true, telegramId: true, telegramUsername: true, preferredLang: true, preferredCurrency: true, balance: true, referralCode: true, referralPercent: true, remnawaveUuid: true, trialUsed: true, isBlocked: true, autoRenewEnabled: true, autoRenewTariffId: true, yoomoneyAccessToken: true, totpEnabled: true, createdAt: true, onboardingCompleted: true },
   });
   if (existing) {
-    if (existing.isBlocked) return res.status(403).json({ message: "Account is blocked" });
+    if (existing.isBlocked) return res.status(403).json({ message: "Аккаунт заблокирован" });
     const auth = buildAuthResponse(existing);
     return res.json(auth);
   }
 
-  if (googleEmail) {
+  if (googleEmail && emailVerified) {
     const byEmail = await prisma.client.findUnique({
       where: { email: googleEmail },
       select: { id: true, email: true, googleId: true, telegramId: true, telegramUsername: true, preferredLang: true, preferredCurrency: true, balance: true, referralCode: true, referralPercent: true, remnawaveUuid: true, trialUsed: true, isBlocked: true, autoRenewEnabled: true, autoRenewTariffId: true, yoomoneyAccessToken: true, totpEnabled: true, createdAt: true, onboardingCompleted: true },
     });
     if (byEmail) {
-      if (byEmail.isBlocked) return res.status(403).json({ message: "Account is blocked" });
+      if (byEmail.isBlocked) return res.status(403).json({ message: "Аккаунт заблокирован" });
       await prisma.client.update({ where: { id: byEmail.id }, data: { googleId } });
       const auth = buildAuthResponse(byEmail);
       return res.json(auth);
@@ -945,10 +967,10 @@ clientAuthRouter.post("/google", async (req, res) => {
 const appleAuthSchema = z.object({ idToken: z.string().min(1) });
 clientAuthRouter.post("/apple", async (req, res) => {
   const parse = appleAuthSchema.safeParse(req.body);
-  if (!parse.success) return res.status(400).json({ message: "Invalid input" });
+  if (!parse.success) return res.status(400).json({ message: "Проверьте введённые данные" });
   const config = await getSystemConfig();
   if (!config.appleLoginEnabled || !config.appleClientId) {
-    return res.status(403).json({ message: "Apple login is not enabled" });
+    return res.status(403).json({ message: "Вход через Apple отключён" });
   }
 
   let appleSub: string | null = null;
@@ -964,16 +986,16 @@ clientAuthRouter.post("/apple", async (req, res) => {
     appleEmail = (jwtPayload as { email?: string }).email ?? null;
   } catch (err) {
     console.error("[Apple OAuth] verify error:", err);
-    return res.status(401).json({ message: "Invalid Apple token" });
+    return res.status(401).json({ message: "Недействительный токен Apple" });
   }
-  if (!appleSub) return res.status(401).json({ message: "Invalid Apple token" });
+  if (!appleSub) return res.status(401).json({ message: "Недействительный токен Apple" });
 
   const existing = await prisma.client.findUnique({
     where: { appleId: appleSub },
     select: { id: true, email: true, telegramId: true, telegramUsername: true, preferredLang: true, preferredCurrency: true, balance: true, referralCode: true, referralPercent: true, remnawaveUuid: true, trialUsed: true, isBlocked: true, autoRenewEnabled: true, autoRenewTariffId: true, yoomoneyAccessToken: true, totpEnabled: true, createdAt: true, onboardingCompleted: true },
   });
   if (existing) {
-    if (existing.isBlocked) return res.status(403).json({ message: "Account is blocked" });
+    if (existing.isBlocked) return res.status(403).json({ message: "Аккаунт заблокирован" });
     const auth = buildAuthResponse(existing);
     return res.json(auth);
   }
@@ -984,7 +1006,7 @@ clientAuthRouter.post("/apple", async (req, res) => {
       select: { id: true, email: true, appleId: true, telegramId: true, telegramUsername: true, preferredLang: true, preferredCurrency: true, balance: true, referralCode: true, referralPercent: true, remnawaveUuid: true, trialUsed: true, isBlocked: true, autoRenewEnabled: true, autoRenewTariffId: true, yoomoneyAccessToken: true, totpEnabled: true, createdAt: true, onboardingCompleted: true },
     });
     if (byEmail) {
-      if (byEmail.isBlocked) return res.status(403).json({ message: "Account is blocked" });
+      if (byEmail.isBlocked) return res.status(403).json({ message: "Аккаунт заблокирован" });
       await prisma.client.update({ where: { id: byEmail.id }, data: { appleId: appleSub } });
       const auth = buildAuthResponse(byEmail);
       return res.json(auth);
@@ -1041,7 +1063,7 @@ clientAuthRouter.post("/telegram-login-token", async (_req, res) => {
     return res.json({ token: record.token, expiresAt: record.expiresAt.toISOString() });
   } catch (err) {
     console.error("[telegram-login-token] error:", err);
-    return res.status(500).json({ message: "Failed to generate auth token" });
+    return res.status(500).json({ message: "Не удалось создать токен авторизации" });
   }
 });
 
@@ -1049,7 +1071,7 @@ clientAuthRouter.post("/telegram-login-token", async (_req, res) => {
 clientAuthRouter.get("/telegram-login-redirect", async (req, res) => {
   const { token } = req.query;
   if (typeof token !== "string" || !token.trim()) {
-    return res.status(400).send("Missing token");
+    return res.status(400).send("Отсутствует токен");
   }
 
   try {
@@ -1058,10 +1080,10 @@ clientAuthRouter.get("/telegram-login-redirect", async (req, res) => {
       select: { id: true, expiresAt: true },
     });
 
-    if (!record) return res.status(404).send("Token not found or expired");
+    if (!record) return res.status(404).send("Токен не найден или устарел");
     if (record.expiresAt < new Date()) {
       await prisma.telegramAuthToken.delete({ where: { id: record.id } }).catch(() => {});
-      return res.status(410).send("Token expired");
+      return res.status(410).send("Токен устарел");
     }
 
     const config = await getSystemConfig();
@@ -1072,7 +1094,7 @@ clientAuthRouter.get("/telegram-login-redirect", async (req, res) => {
     return res.redirect(302, tgUrl);
   } catch (err) {
     console.error("[telegram-login-redirect] error:", err);
-    return res.status(500).send("Internal error");
+    return res.status(500).send("Внутренняя ошибка");
   }
 });
 
@@ -1080,7 +1102,7 @@ clientAuthRouter.get("/telegram-login-redirect", async (req, res) => {
 clientAuthRouter.get("/telegram-login-check", async (req, res) => {
   const { token } = req.query;
   if (typeof token !== "string" || !token.trim()) {
-    return res.status(400).json({ message: "Missing token" });
+    return res.status(400).json({ message: "Отсутствует токен" });
   }
 
   try {
@@ -1089,12 +1111,12 @@ clientAuthRouter.get("/telegram-login-check", async (req, res) => {
     })) as TelegramAuthTokenRecord | null;
 
     if (!record) {
-      return res.status(404).json({ message: "Token not found or expired" });
+      return res.status(404).json({ message: "Токен не найден или устарел" });
     }
 
     if (record.expiresAt < new Date()) {
       await prisma.telegramAuthToken.delete({ where: { id: record.id } }).catch(() => {});
-      return res.status(410).json({ message: "Token expired" });
+      return res.status(410).json({ message: "Токен устарел" });
     }
 
     if (!record.confirmedTelegramId) {
@@ -1116,7 +1138,7 @@ clientAuthRouter.get("/telegram-login-check", async (req, res) => {
     });
 
     if (existing) {
-      if (existing.isBlocked) return res.status(403).json({ message: "Account is blocked" });
+      if (existing.isBlocked) return res.status(403).json({ message: "Аккаунт заблокирован" });
       // Обновляем username если изменился
       if (telegramUsername && existing.telegramUsername !== telegramUsername) {
         await prisma.client.update({ where: { id: existing.id }, data: { telegramUsername } }).catch(() => {});
@@ -1172,7 +1194,7 @@ clientAuthRouter.get("/telegram-login-check", async (req, res) => {
     return res.json({ confirmed: true, token: jwt, client: toClientShape(client), justCreated: true });
   } catch (err) {
     console.error("[telegram-login-check] error:", err);
-    return res.status(500).json({ message: "Internal error" });
+    return res.status(500).json({ message: "Внутренняя ошибка" });
   }
 });
 
@@ -1182,15 +1204,15 @@ clientAuthRouter.post("/telegram-login-confirm", async (req, res) => {
   const receivedBotToken = (req.headers["x-telegram-bot-token"] as string ?? "").trim();
   const expectedToken = (process.env.BOT_TOKEN ?? "").trim();
   if (!receivedBotToken || !expectedToken || receivedBotToken !== expectedToken) {
-    return res.status(403).json({ message: "Unauthorized" });
+    return res.status(403).json({ message: "Требуется авторизация" });
   }
 
   const { token, telegramId, telegramUsername } = req.body ?? {};
   if (typeof token !== "string" || !token.trim()) {
-    return res.status(400).json({ message: "Missing token" });
+    return res.status(400).json({ message: "Отсутствует токен" });
   }
   if (telegramId == null) {
-    return res.status(400).json({ message: "Missing telegramId" });
+    return res.status(400).json({ message: "Отсутствует Telegram ID" });
   }
 
   try {
@@ -1199,16 +1221,16 @@ clientAuthRouter.post("/telegram-login-confirm", async (req, res) => {
     });
 
     if (!record) {
-      return res.status(404).json({ message: "Token not found" });
+      return res.status(404).json({ message: "Токен не найден" });
     }
 
     if (record.expiresAt < new Date()) {
       await prisma.telegramAuthToken.delete({ where: { id: record.id } }).catch(() => {});
-      return res.status(410).json({ message: "Token expired" });
+      return res.status(410).json({ message: "Токен устарел" });
     }
 
     if (record.confirmedTelegramId) {
-      return res.status(409).json({ message: "Token already confirmed" });
+      return res.status(409).json({ message: "Токен уже подтверждён" });
     }
 
     await prisma.telegramAuthToken.update({
@@ -1222,7 +1244,7 @@ clientAuthRouter.post("/telegram-login-confirm", async (req, res) => {
     return res.json({ ok: true });
   } catch (err) {
     console.error("[telegram-login-confirm] error:", err);
-    return res.status(500).json({ message: "Internal error" });
+    return res.status(500).json({ message: "Внутренняя ошибка" });
   }
 });
 
@@ -1378,7 +1400,7 @@ clientRouter.post("/change-password", requireClientAuth, async (req, res) => {
   const client = (req as unknown as { client: { id: string; passwordHash: string | null } }).client;
   const body = changePasswordSchema.safeParse(req.body);
   if (!body.success) {
-    return res.status(400).json({ message: "Invalid input", errors: body.error.flatten() });
+    return res.status(400).json({ message: "Проверьте введённые данные", errors: body.error.flatten() });
   }
 
   // Получаем актуальный passwordHash из базы
@@ -1413,7 +1435,7 @@ clientRouter.post("/set-password", requireClientAuth, async (req, res) => {
   const client = (req as unknown as { client: { id: string; passwordHash: string | null } }).client;
   const body = setPasswordSchema.safeParse(req.body);
   if (!body.success) {
-    return res.status(400).json({ message: "Invalid input", errors: body.error.flatten() });
+    return res.status(400).json({ message: "Проверьте введённые данные", errors: body.error.flatten() });
   }
 
   const clientData = await prisma.client.findUnique({
@@ -1452,13 +1474,13 @@ const updateProfileSchema = z.object({
 clientRouter.patch("/profile", async (req, res) => {
   const client = (req as unknown as { client: { id: string } }).client;
   const body = updateProfileSchema.safeParse(req.body);
-  if (!body.success) return res.status(400).json({ message: "Invalid input", errors: body.error.flatten() });
+  if (!body.success) return res.status(400).json({ message: "Проверьте введённые данные", errors: body.error.flatten() });
   const updates: { preferredLang?: string; preferredCurrency?: string } = {};
   if (body.data.preferredLang !== undefined) updates.preferredLang = body.data.preferredLang;
   if (body.data.preferredCurrency !== undefined) updates.preferredCurrency = body.data.preferredCurrency;
   if (Object.keys(updates).length === 0) {
     const current = await prisma.client.findUnique({ where: { id: client.id }, select: { id: true, email: true, telegramId: true, telegramUsername: true, preferredLang: true, preferredCurrency: true, balance: true, referralCode: true, remnawaveUuid: true, trialUsed: true, isBlocked: true, autoRenewEnabled: true, autoRenewTariffId: true, createdAt: true, onboardingCompleted: true } });
-    return res.json(current ? toClientShape(current) : { message: "Not found" });
+    return res.json(current ? toClientShape(current) : { message: "Не найдено" });
   }
   const updated = await prisma.client.update({
     where: { id: client.id },
@@ -1477,7 +1499,7 @@ const updateAutoRenewSchema = z.object({
 clientRouter.patch("/auto-renew", async (req, res) => {
   const client = (req as unknown as { client: { id: string } }).client;
   const body = updateAutoRenewSchema.safeParse(req.body);
-  if (!body.success) return res.status(400).json({ message: "Invalid input", errors: body.error.flatten() });
+  if (!body.success) return res.status(400).json({ message: "Проверьте введённые данные", errors: body.error.flatten() });
 
   const updates: {
     autoRenewEnabled?: boolean;
@@ -1529,7 +1551,35 @@ clientRouter.patch("/auto-renew", async (req, res) => {
 
   if (Object.keys(updates).length === 0) {
     const current = await prisma.client.findUnique({ where: { id: client.id }, select: { id: true, email: true, telegramId: true, telegramUsername: true, preferredLang: true, preferredCurrency: true, balance: true, referralCode: true, remnawaveUuid: true, trialUsed: true, isBlocked: true, autoRenewEnabled: true, autoRenewTariffId: true, autoRenewPromoCode: true, createdAt: true, onboardingCompleted: true, passwordHash: true } });
-    return res.json(current ? toClientShape(current) : { message: "Not found" });
+    return res.json(current ? toClientShape(current) : { message: "Не найдено" });
+  }
+
+  // МОСТ В UNIFIED-ЦИКЛ: профильный тумблер (бот «Профиль → Автопродление») — мастер-переключатель
+  // per-sub автосписания. Раньше PATCH писал ТОЛЬКО в legacy Client.*-поля, которые unified-цикл
+  // (source-of-truth) не читает, а legacy Client-цикл требует autoRenewTariffId (null без платёжной
+  // истории) и сломан tx-isolation багом → кнопка показывала «включено», но НИКОГДА не списывала.
+  if (body.data.enabled === true) {
+    // Включаем на всех обычных (не подарочных) подписках, которым есть что продлевать;
+    // autoRenewTariffId подтягиваем из tariffId, если пуст (нужен циклу при удалении тарифа).
+    const subsToEnable = await prisma.subscription.findMany({
+      where: {
+        ownerId: client.id,
+        giftStatus: null,
+        OR: [{ tariffId: { not: null } }, { autoRenewTariffId: { not: null } }],
+      },
+      select: { id: true, tariffId: true, autoRenewTariffId: true },
+    });
+    for (const s of subsToEnable) {
+      await prisma.subscription.update({
+        where: { id: s.id },
+        data: { autoRenewEnabled: true, ...(s.autoRenewTariffId ? {} : { autoRenewTariffId: s.tariffId }) },
+      });
+    }
+  } else if (body.data.enabled === false) {
+    await prisma.subscription.updateMany({
+      where: { ownerId: client.id },
+      data: { autoRenewEnabled: false },
+    });
   }
 
   const updated = await prisma.client.update({
@@ -1561,7 +1611,7 @@ clientRouter.post("/link-telegram", async (req, res) => {
   const client = (req as unknown as { client: { id: string; telegramId: string | null } }).client;
   if (client.telegramId) return res.status(400).json({ message: "Telegram уже привязан" });
   const body = linkTelegramSchema.safeParse(req.body);
-  if (!body.success) return res.status(400).json({ message: "Invalid input", errors: body.error.flatten() });
+  if (!body.success) return res.status(400).json({ message: "Проверьте введённые данные", errors: body.error.flatten() });
   // v5.0.0: initData подписан токеном единственного бота инсталляции.
   const botToken = (process.env.BOT_TOKEN ?? "").trim();
   if (!botToken || !validateTelegramInitData(body.data.initData, botToken)) {
@@ -1585,44 +1635,17 @@ clientRouter.post("/link-telegram", async (req, res) => {
     }),
   })) as ClientEmptyCloneRow | null;
   if (other && other.id !== client.id) {
-    // Проверяем: "другой" клиент — это пустой автосоздавшийся через /start в боте
-    // (нет email/OAuth/пароля, без платежей, без дополнительных подписок, нулевой баланс)?
-    // Если да — безопасно удаляем и переносим telegramId (и remnawaveUuid, если есть) на текущего.
-    const isEmptyBotClone =
-      !other.email &&
-      !other.passwordHash &&
-      !other.googleId &&
-      !other.appleId &&
-      other.balance === 0 &&
-      other._count.payments === 0 &&
-      other._count.ownedSubscriptions === 0;
-    if (!isEmptyBotClone) {
-      return res.status(409).json({ message: "Этот Telegram-аккаунт уже привязан к другому аккаунту. Сначала войдите в тот аккаунт и отвяжите Telegram, либо обратитесь в поддержку." });
+    // Второй аккаунт с этим telegramId. Сливаем в текущего (инициатор из мини-аппа),
+    // если TG-аккаунт не самостоятельная web-идентичность (нет email/пароля/OAuth) —
+    // независимо от наличия подписок/баланса (схема Алекса). Иначе отказ.
+    if (!isBotOnlyAccount(other)) {
+      return res.status(409).json({ message: "Этот Telegram-аккаунт уже привязан к другому аккаунту с почтой. Сначала войдите в тот аккаунт и отвяжите Telegram, либо обратитесь в поддержку." });
     }
-    // Сливаем: переносим remnawaveUuid (если есть и у нас пусто) и удаляем пустого клона.
-    const keepRemna = other.remnawaveUuid ?? null;
-    await prisma.$transaction(async (tx) => {
-      await tx.client.delete({ where: { id: other.id } });
-      await tx.client.update({
-        where: { id: client.id },
-        data: {
-          telegramId,
-          telegramUsername,
-          // Только если у текущего клиента нет своего remnawaveUuid — берём из клона.
-          ...(keepRemna ? { remnawaveUuid: { set: keepRemna } } : {}),
-        },
-      });
-    }).catch(async (e) => {
+    try {
+      await mergeClients(client.id, other.id, { telegramId, telegramUsername });
+    } catch (e) {
       console.error("[link-telegram] merge failed:", e);
-      // Фолбэк: если транзакция упала, попробуем без переноса remnawaveUuid.
-      await prisma.client.update({ where: { id: client.id }, data: { telegramId, telegramUsername } });
-    });
-    // Если у текущего клиента уже был свой remnawaveUuid — не перезаписываем его клоновым.
-    const current = await prisma.client.findUnique({ where: { id: client.id }, select: { remnawaveUuid: true } });
-    if (current?.remnawaveUuid && keepRemna && current.remnawaveUuid !== keepRemna) {
-      // Уже был свой uuid, транзакция выше его перезаписала — откатываем на родной.
-      // (Это крайний edge case, нормальный путь: у текущего клиента uuid=null, клон имеет uuid, берём клоновый.)
-      await prisma.client.update({ where: { id: client.id }, data: { remnawaveUuid: current.remnawaveUuid } });
+      return res.status(500).json({ message: "Не удалось объединить аккаунты. Обратитесь в поддержку." });
     }
   } else {
     await prisma.client.update({ where: { id: client.id }, data: { telegramId, telegramUsername } });
@@ -1653,8 +1676,14 @@ clientRouter.get("/tariff-conversion-preview", async (req, res) => {
   const priceOptionId = typeof req.query.priceOptionId === "string" ? req.query.priceOptionId : null;
   if (!tariffId) return res.status(400).json({ message: "tariffId обязателен" });
 
-  const convertible = await findConvertibleSubscription(client.id, tariffId);
+  const cfgMS = await getSystemConfig().catch(() => null);
+  const multiSubEnabled = (cfgMS as { multiSubscriptionsEnabled?: boolean } | null)?.multiSubscriptionsEnabled ?? true;
+  const convertible = await findConvertibleSubscription(client.id, tariffId, multiSubEnabled);
   if (!convertible) return res.json({ willConvert: false });
+  // Single-режим: сколько ДРУГИХ подписок клиента удалится при консолидации (кроме конвертируемой).
+  const othersToRemove = !multiSubEnabled
+    ? Math.max(0, (await prisma.subscription.count({ where: { ownerId: client.id, purchasedAsGift: false, giftStatus: null } })) - 1)
+    : 0;
 
   const tariff = await prisma.tariff.findUnique({
     where: { id: tariffId },
@@ -1695,6 +1724,7 @@ clientRouter.get("/tariff-conversion-preview", async (req, res) => {
     return res.json({
       willConvert: true,
       mode: "extend",
+      othersToRemove,
       subscription: {
         id: convertible.id,
         index: convertible.subscriptionIndex,
@@ -1721,6 +1751,27 @@ clientRouter.get("/tariff-conversion-preview", async (req, res) => {
   // та же математика, что в extendSecondarySubscription(convertMode):
   // полная старая ставка = база + устройства; при «убрать» вся ценность уходит в дни
   // чистого тарифа, при «оставить» — в дни тарифа с устройствами.
+  // Глобальный single-режим (мульти-подписки выкл): смена тарифа = ЖЁСТКАЯ замена.
+  // Старая подписка обнуляется, остаток дней СГОРАЕТ, новая с нуля на выбранный тариф.
+  if (!multiSubEnabled) {
+    return res.json({
+      willConvert: true,
+      mode: "replace",
+      othersToRemove,
+      subscription: {
+        id: convertible.id,
+        index: convertible.subscriptionIndex,
+        tariffName: convertible.tariffName,
+        expireAt: convertible.expireAt?.toISOString() ?? null,
+        isTrial: convertible.trialId != null,
+      },
+      remainingDays,
+      convertedDays: 0,
+      purchasedDays,
+      totalDays: purchasedDays,
+    });
+  }
+
   const extrasPerDay = extraDevices > 0 ? extrasMonthly / 30 : 0;
   const oldFullPerDay = convertible.currentPricePerDay != null
     ? convertible.currentPricePerDay + extrasPerDay
@@ -1743,6 +1794,7 @@ clientRouter.get("/tariff-conversion-preview", async (req, res) => {
   return res.json({
     willConvert: true,
     mode: "convert",
+      othersToRemove,
     subscription: {
       id: convertible.id,
       index: convertible.subscriptionIndex,
@@ -1809,18 +1861,20 @@ clientRouter.post("/link-email-request", async (req, res) => {
   if (!body.success) return res.status(400).json({ message: "Некорректный email", errors: body.error.flatten() });
   const email = body.data.email.trim().toLowerCase();
   const config = await getSystemConfig();
-  const smtpConfig = {
-    host: config.smtpHost || "",
-    port: config.smtpPort ?? 587,
-    secure: config.smtpSecure ?? false,
-    user: config.smtpUser ?? null,
-    password: config.smtpPassword ?? null,
-    fromEmail: config.smtpFromEmail ?? null,
-    fromName: config.smtpFromName ?? null,
-  };
-  if (!isSmtpConfigured(smtpConfig)) return res.status(503).json({ message: "Отправка писем не настроена. Обратитесь в поддержку." });
-  const existing = await prisma.client.findUnique({ where: { email } });
-  if (existing && existing.id !== client.id) return res.status(400).json({ message: "Эта почта уже используется другим аккаунтом" });
+  const smtpConfig = mailConfigFromSystem(config);
+  if (!isMailConfigured(smtpConfig)) return res.status(503).json({ message: "Отправка писем не настроена. Обратитесь в поддержку." });
+  const existing = await prisma.client.findUnique({
+    where: { email },
+    select: { id: true, telegramId: true },
+  });
+  // Почта занята другим аккаунтом. По схеме Алекса:
+  //  - если у владельца почты НЕТ Telegram — слияние возможно (произойдёт после
+  //    подтверждения письма, см. verify-link-email). Письмо всё равно шлём.
+  //  - если у владельца почты УЖЕ привязан Telegram — это полноценный аккаунт,
+  //    привязать такую почту нельзя.
+  if (existing && existing.id !== client.id && existing.telegramId) {
+    return res.status(400).json({ message: "Эта почта уже привязана к другому аккаунту с Telegram. Объединение невозможно — обратитесь в поддержку." });
+  }
   await prisma.pendingEmailLink.deleteMany({ where: { clientId: client.id } });
   const verificationToken = randomUUID();
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -1856,7 +1910,7 @@ clientRouter.get("/referral-stats", async (req, res) => {
       _count: { select: { referrals: true } },
     },
   });
-  if (!c) return res.status(404).json({ message: "Not found" });
+  if (!c) return res.status(404).json({ message: "Не найдено" });
   const config = await getSystemConfig();
   const referralPercent: number = c.referralPercent ?? (config.defaultReferralPercent ?? 0);
 
@@ -2004,6 +2058,18 @@ clientRouter.post("/trial", async (req, res) => {
   }
   if (!isRemnaConfigured()) {
     return res.status(503).json({ message: "Сервис временно недоступен" });
+  }
+
+  // single-режим (мульти-подписки ВЫКЛ): у клиента может быть только ОДНА подписка.
+  // Если подписка (не подарок) уже есть — триал вторым не выдаём. В мульти-режиме
+  // (по умолчанию) — как раньше, триал доступен параллельно.
+  if (config.multiSubscriptionsEnabled === false) {
+    const existingSubs = await prisma.subscription.count({
+      where: { ownerId: client.id, purchasedAsGift: false, giftStatus: null },
+    });
+    if (existingSubs > 0) {
+      return res.status(400).json({ message: "Бесплатный тест недоступен — у вас уже есть подписка." });
+    }
   }
 
   const trafficLimitBytes = config.trialTrafficLimitBytes ?? 0;
@@ -2254,6 +2320,16 @@ clientRouter.post("/trials/:id/activate", async (req, res) => {
   });
   if (existingUsage) {
     return res.status(409).json({ message: "Этот пробный период уже активирован" });
+  }
+
+  // single-режим (мульти-подписки ВЫКЛ): одна подписка на клиента. Если подписка
+  // (не подарок) уже есть — standalone-пробный вторым не выдаём.
+  const cfgTrialStandalone = await getSystemConfig().catch(() => null);
+  if ((cfgTrialStandalone as { multiSubscriptionsEnabled?: boolean } | null)?.multiSubscriptionsEnabled === false) {
+    const existingSubsT = await prisma.subscription.count({ where: { ownerId: clientId, purchasedAsGift: false, giftStatus: null } });
+    if (existingSubsT > 0) {
+      return res.status(400).json({ message: "Пробный период недоступен — у вас уже есть подписка." });
+    }
   }
 
   // Создаём secondary subscription. Источник параметров —
@@ -3101,7 +3177,7 @@ clientRouter.get("/subscription/:id/cooldown", async (req, res) => {
 clientRouter.post("/subscriptions/cooldown-check", async (req, res) => {
   const clientId = (req as unknown as { clientId: string }).clientId;
   const body = req.body as { ids?: unknown };
-  if (!Array.isArray(body.ids)) return res.status(400).json({ message: "ids must be array" });
+  if (!Array.isArray(body.ids)) return res.status(400).json({ message: "ids должен быть массивом" });
   const ids = body.ids.filter((v): v is string => typeof v === "string" && v.length > 0).slice(0, 50);
   if (ids.length === 0) return res.json({ items: [] });
   const subs = await prisma.subscription.findMany({
@@ -3375,7 +3451,7 @@ clientRouter.post("/devices/delete", async (req, res) => {
   const client = (req as unknown as { client: { id: string; remnawaveUuid: string | null } }).client;
   const clientId = (req as unknown as { clientId: string }).clientId;
   const body = deleteDeviceSchema.safeParse(req.body);
-  if (!body.success) return res.status(400).json({ message: "Invalid input", errors: body.error.flatten() });
+  if (!body.success) return res.status(400).json({ message: "Проверьте введённые данные", errors: body.error.flatten() });
 
   // Определяем UUID подписки откуда удалять.
   // резолвим uuid ВСЕГДА по subscriptionId, если он передан
@@ -3549,7 +3625,7 @@ clientRouter.post("/payments/platega", async (req, res) => {
   const clientId = (req as unknown as { clientId: string }).clientId;
   const parsed = createPlategaPaymentSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten() });
+    return res.status(400).json({ message: "Проверьте введённые данные", errors: parsed.error.flatten() });
   }
   const { amount: originalAmount, currency, paymentMethod, description, tariffId, proxyTariffId, singboxTariffId, promoCode: promoCodeStr, extraOption, customBuild: customBuildBody } = parsed.data;
 
@@ -3884,7 +3960,7 @@ const payByBalanceSchema = z.object({
 clientRouter.post("/payments/balance", async (req, res) => {
   const clientRaw = (req as unknown as { client: { id: string; remnawaveUuid: string | null; email: string | null; telegramId: string | null } }).client;
   const parsed = payByBalanceSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten() });
+  if (!parsed.success) return res.status(400).json({ message: "Проверьте введённые данные", errors: parsed.error.flatten() });
 
   const { tariffId, tariffPriceOptionId, deviceCount, proxyTariffId, singboxTariffId, promoCode: promoCodeStr, extendsSecondarySubId, removeExtrasOnActivate, asAdditional, replaceTrialSubId } = parsed.data;
 
@@ -3899,7 +3975,7 @@ clientRouter.post("/payments/balance", async (req, res) => {
     const tariff = await prisma.proxyTariff.findUnique({ where: { id: proxyTariffId } });
     if (!tariff || !tariff.enabled) return res.status(400).json({ message: "Прокси-тариф не найден" });
     const clientDb = await prisma.client.findUnique({ where: { id: clientRaw.id } });
-    if (!clientDb) return res.status(401).json({ message: "Unauthorized" });
+    if (!clientDb) return res.status(401).json({ message: "Требуется авторизация" });
     // Персональная скидка админа (баланс — такой же канал оплаты, как и другие).
     const pd = await applyPersonalDiscount(tariff.price, clientRaw.id);
     const finalProxyPrice = pd.amount;
@@ -3958,7 +4034,7 @@ clientRouter.post("/payments/balance", async (req, res) => {
     const tariff = await prisma.singboxTariff.findUnique({ where: { id: singboxTariffId } });
     if (!tariff || !tariff.enabled) return res.status(400).json({ message: "Тариф Sing-box не найден" });
     const clientDb = await prisma.client.findUnique({ where: { id: clientRaw.id } });
-    if (!clientDb) return res.status(401).json({ message: "Unauthorized" });
+    if (!clientDb) return res.status(401).json({ message: "Требуется авторизация" });
     const pd = await applyPersonalDiscount(tariff.price, clientRaw.id);
     const finalSingboxPrice = pd.amount;
     const singSnap = await paymentSnapshotProduct(clientRaw.id, finalSingboxPrice);
@@ -4117,7 +4193,7 @@ clientRouter.post("/payments/balance", async (req, res) => {
 
   // Проверяем баланс (с учётом наценки клона)
   const clientDb = await prisma.client.findUnique({ where: { id: clientRaw.id } });
-  if (!clientDb) return res.status(401).json({ message: "Unauthorized" });
+  if (!clientDb) return res.status(401).json({ message: "Требуется авторизация" });
   const tariffPaySnap = await paymentSnapshotProduct(clientRaw.id, finalPrice);
 
   // Атомик debit ДО активации в Remna. Раньше было: проверили баланс, активировали
@@ -4148,6 +4224,9 @@ clientRouter.post("/payments/balance", async (req, res) => {
   let convertedFromTariffName: string | null = null;
   let convertedDaysForNotify: number | null = null;
   let createdSubscriptionId: string | null = null;
+  // Глобальный тумблер мульти-подписок (single-режим при выкл). Объявлен на уровне
+  // хендлера — нужен и в конверт-ветке, и в сообщении/консолидации ниже.
+  const multiSubEnabledBal = ((await getSystemConfig().catch(() => null)) as { multiSubscriptionsEnabled?: boolean } | null)?.multiSubscriptionsEnabled ?? true;
 
   if (extendsSecondarySubId) {
     const sec = await prisma.subscription.findUnique({
@@ -4178,7 +4257,7 @@ clientRouter.post("/payments/balance", async (req, res) => {
     // Балансовый путь активирует напрямую (мимо activateTariffByPaymentId), поэтому
     // конверт-ветка нужна и здесь.
     const { findConvertibleSubscription, extendSecondarySubscription } = await import("../tariff/tariff-activation.service.js");
-    const convertible = await findConvertibleSubscription(clientRaw.id, tariff.id);
+    const convertible = await findConvertibleSubscription(clientRaw.id, tariff.id, multiSubEnabledBal);
     if (convertible) {
       activateResult = await extendSecondarySubscription(
         convertible.id,
@@ -4188,8 +4267,9 @@ clientRouter.post("/payments/balance", async (req, res) => {
         // юзер выбрал убрать доп. устройства при конвертации —
         // их остаточная ценность уйдёт в дни нового тарифа.
         removeExtrasOnActivate === true,
-        // тот же тариф → обычное продление (стек дней), другой → конвертация.
-        /* convertMode */ !convertible.sameTariff,
+        // тот же тариф → продление (стек); другой → convert (мульти вкл) / hardReplace (мульти выкл, дни сгорают).
+        /* convertMode */ multiSubEnabledBal && !convertible.sameTariff,
+        /* hardReplace */ !multiSubEnabledBal && !convertible.sameTariff,
       );
       isConverted = activateResult.ok && !convertible.sameTariff;
       isExtendingSecondary = isExtendingSecondary || (activateResult.ok && convertible.sameTariff);
@@ -4314,12 +4394,22 @@ clientRouter.post("/payments/balance", async (req, res) => {
     await extinguishOneTimeDiscount(clientRaw.id).catch(() => {});
   }
 
+  // Single-режим (мульти выкл): оставляем РОВНО ОДНУ подписку — удаляем остальные (в т.ч. из других категорий).
+  if (!multiSubEnabledBal && createdSubscriptionId) {
+    try {
+      const { consolidateToSingleSubscription } = await import("../tariff/tariff-activation.service.js");
+      await consolidateToSingleSubscription(clientRaw.id, createdSubscriptionId);
+    } catch (e) { console.error("[balance] consolidate failed:", e); }
+  }
+
   // T7b: сообщение клиенту — конвертировано / продлено / активировано.
   const convertedDaysMsg = (activateResult.ok && activateResult.convertedDays && activateResult.convertedDays > 0)
     ? ` Остаток прежней подписки конвертирован: +${activateResult.convertedDays} дн.`
     : "";
   const okMessage = isConverted
-    ? `🔄 У вас уже была подписка в этой категории — она обновлена до тарифа «${tariff.name}».${convertedDaysMsg} Списано ${tariffPaySnap.amount.toFixed(2)} ${tariff.currency.toUpperCase()} с баланса.`
+    ? (!multiSubEnabledBal
+        ? `🔄 Прежняя подписка заменена на тариф «${tariff.name}» — при выключённых мульти-подписках активна только одна подписка. Списано ${tariffPaySnap.amount.toFixed(2)} ${tariff.currency.toUpperCase()} с баланса.`
+        : `🔄 У вас уже была подписка в этой категории — она обновлена до тарифа «${tariff.name}».${convertedDaysMsg} Списано ${tariffPaySnap.amount.toFixed(2)} ${tariff.currency.toUpperCase()} с баланса.`)
     : isExtendingSecondary
       ? `🔄 Подписка продлена на ${effectiveDays} дн.! Списано ${tariffPaySnap.amount.toFixed(2)} ${tariff.currency.toUpperCase()} с баланса.`
       : `Тариф «${tariff.name}» активирован! Списано ${tariffPaySnap.amount.toFixed(2)} ${tariff.currency.toUpperCase()} с баланса.`;
@@ -4410,7 +4500,7 @@ clientRouter.post("/custom-build/pay-balance", async (req, res) => {
   }
 
   const clientDb = await prisma.client.findUnique({ where: { id: clientRaw.id } });
-  if (!clientDb) return res.status(401).json({ message: "Unauthorized" });
+  if (!clientDb) return res.status(401).json({ message: "Требуется авторизация" });
   const customSnap = await paymentSnapshotProduct(clientRaw.id, finalPrice);
 
   // Тот же TOCTOU, что в /payments/balance: read balance → check → activate (Remna,
@@ -4494,7 +4584,7 @@ const payOptionByBalanceSchema = z.object({
 clientRouter.post("/payments/balance/option", async (req, res) => {
   const clientRaw = (req as unknown as { clientId: string }).clientId;
   const parsed = payOptionByBalanceSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten() });
+  if (!parsed.success) return res.status(400).json({ message: "Проверьте введённые данные", errors: parsed.error.flatten() });
 
   const config = await getSystemConfig();
   if (!(config as { sellOptionsEnabled?: boolean }).sellOptionsEnabled) {
@@ -4547,7 +4637,7 @@ clientRouter.post("/payments/balance/option", async (req, res) => {
   }
 
   const clientDb = await prisma.client.findUnique({ where: { id: clientRaw } });
-  if (!clientDb) return res.status(401).json({ message: "Unauthorized" });
+  if (!clientDb) return res.status(401).json({ message: "Требуется авторизация" });
 
   // валидируем, что secondary принадлежит клиенту.
   // Если targetSubscriptionId не передан — опция применится к primary (старое поведение).
@@ -4983,7 +5073,7 @@ clientRouter.post("/yoomoney/create-form-payment", async (req, res) => {
 clientRouter.get("/yoomoney/form-payment/:paymentId", async (req, res) => {
   const clientId = (req as unknown as { clientId: string }).clientId;
   const paymentId = typeof req.params.paymentId === "string" ? req.params.paymentId : "";
-  if (!paymentId) return res.status(400).json({ message: "paymentId required" });
+  if (!paymentId) return res.status(400).json({ message: "Требуется paymentId" });
 
   const payment = await prisma.payment.findFirst({
     where: { id: paymentId, clientId, status: "PENDING", provider: "yoomoney_form" },
@@ -7113,7 +7203,7 @@ clientRouter.post("/tickets", uploadTicketAttachment.array("files", 5), async (r
   const message = pickField(req, "message");
   const body = createTicketSchema.safeParse({ subject, message });
   if (!body.success) {
-    return res.status(400).json({ message: "Invalid input", errors: body.error.flatten() });
+    return res.status(400).json({ message: "Проверьте введённые данные", errors: body.error.flatten() });
   }
   const attachments = filesToAttachments(req.files as Express.Multer.File[] | undefined);
   const trimmedMessage = body.data.message.trim();
@@ -7224,7 +7314,7 @@ clientRouter.post("/tickets/:id/messages", uploadTicketAttachment.array("files",
   const content = pickField(req, "content");
   const body = replyTicketSchema.safeParse({ content });
   if (!body.success) {
-    return res.status(400).json({ message: "Invalid input", errors: body.error.flatten() });
+    return res.status(400).json({ message: "Проверьте введённые данные", errors: body.error.flatten() });
   }
   const ticket = await prisma.ticket.findFirst({ where: { id: req.params.id, clientId } });
   if (!ticket) return res.status(404).json({ message: "Тикет не найден" });
@@ -7332,12 +7422,17 @@ publicConfigRouter.get("/manifest.webmanifest", async (_req, res) => {
 publicConfigRouter.get("/deeplink", (req, res) => {
   const url = typeof req.query.url === "string" ? req.query.url : "";
   if (!url) return res.status(400).send("Missing url parameter");
+  // 🔒 SECURITY: reflected XSS fix (CSP в helmet отключён). В легитимных диплинках нет
+  // символов < > " ' ` / переводов строк и они не бывают javascript:/data:/vbscript:.
+  if (/[<>"'`\r\n]/.test(url) || /^\s*(javascript|data|vbscript):/i.test(url)) {
+    return res.status(400).send("Invalid url");
+  }
   const skipAuto = req.query.skip_auto === "1" || req.query.skip_auto === "true";
   const safeUrl = url.replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const safeUrlJs = url.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+  const safeUrlJs = JSON.stringify(url).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
   const autoRedirectScript = skipAuto
     ? "/* skip_auto: только кнопка, без авто-редиректа (из мини-аппа) */"
-    : `setTimeout(function(){ try { window.location.href = "${safeUrlJs}"; } catch (e) {} }, 300);`;
+    : `setTimeout(function(){ try { window.location.href = ${safeUrlJs}; } catch (e) {} }, 300);`;
   const html = `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
@@ -7377,10 +7472,10 @@ publicConfigRouter.post("/link-telegram-from-bot", async (req, res) => {
   const headerToken = typeof req.headers["x-telegram-bot-token"] === "string" ? req.headers["x-telegram-bot-token"].trim() : "";
   const expectedToken = (process.env.BOT_TOKEN ?? "").trim();
   if (!headerToken || !expectedToken || headerToken !== expectedToken) {
-    return res.status(401).json({ message: "Unauthorized" });
+    return res.status(401).json({ message: "Требуется авторизация" });
   }
   const body = linkTelegramFromBotSchema.safeParse(req.body);
-  if (!body.success) return res.status(400).json({ message: "Invalid input", errors: body.error.flatten() });
+  if (!body.success) return res.status(400).json({ message: "Проверьте введённые данные", errors: body.error.flatten() });
   const { code, telegramId, telegramUsername } = body.data;
   const tid = String(telegramId);
   const pending = await prisma.pendingTelegramLink.findUnique({ where: { code: code.trim() } });
@@ -7403,40 +7498,26 @@ publicConfigRouter.post("/link-telegram-from-bot", async (req, res) => {
     }),
   })) as ClientEmptyCloneRow | null;
   if (other && other.id !== pending.clientId) {
-    // Кейс PabloRuss77: юзер нажал /start в боте до ввода кода → авто-создался пустой клиент с
-    // этим telegramId. Если клон пустой — безопасно сливаем (переносим telegramId и
-    // remnawaveUuid, удаляем пустого клона).
-    const isEmptyBotClone =
-      !other.email &&
-      !other.passwordHash &&
-      !other.googleId &&
-      !other.appleId &&
-      other.balance === 0 &&
-      other._count.payments === 0 &&
-      other._count.ownedSubscriptions === 0;
-    if (!isEmptyBotClone) {
+    // Второй аккаунт с этим telegramId. Сливаем в инициатора (владельца кода),
+    // если TG-аккаунт НЕ является самостоятельной web-идентичностью (нет email/пароля/OAuth):
+    //   - «пустой клон» (нажал /start до ввода кода) — сливается;
+    //   - бот-аккаунт С подписками/балансом/платежами — тоже сливается (схема Алекса:
+    //     подписки, баланс и рефералы объединяются, дубль удаляется).
+    // Если у TG-аккаунта есть email/OAuth — это полноценный отдельный аккаунт, отказ.
+    if (!isBotOnlyAccount(other)) {
       await prisma.pendingTelegramLink.deleteMany({ where: { id: pending.id } }).catch(() => {});
-      return res.status(409).json({ message: "Этот Telegram-аккаунт уже привязан к другому аккаунту. Отвяжите его сначала или обратитесь в поддержку." });
+      return res.status(409).json({ message: "Этот Telegram-аккаунт уже привязан к другому аккаунту с почтой. Войдите в тот аккаунт и отвяжите Telegram, либо обратитесь в поддержку." });
     }
-    const target = await prisma.client.findUnique({ where: { id: pending.clientId }, select: { remnawaveUuid: true } });
-    const newRemnaUuid = target?.remnawaveUuid ?? other.remnawaveUuid ?? null;
-    await prisma.$transaction(async (tx) => {
-      await tx.client.delete({ where: { id: other.id } });
-      await tx.client.update({
-        where: { id: pending.clientId },
-        data: {
-          telegramId: tid,
-          telegramUsername: (telegramUsername ?? "").trim() || null,
-          ...(newRemnaUuid ? { remnawaveUuid: newRemnaUuid } : {}),
-        },
+    try {
+      await mergeClients(pending.clientId, other.id, {
+        telegramId: tid,
+        telegramUsername: (telegramUsername ?? "").trim() || null,
       });
-    }).catch(async (e) => {
+    } catch (e) {
       console.error("[link-telegram-from-bot] merge failed:", e);
-      await prisma.client.update({
-        where: { id: pending.clientId },
-        data: { telegramId: tid, telegramUsername: (telegramUsername ?? "").trim() || null },
-      }).catch(() => {});
-    });
+      await prisma.pendingTelegramLink.deleteMany({ where: { id: pending.id } }).catch(() => {});
+      return res.status(500).json({ message: "Не удалось объединить аккаунты. Обратитесь в поддержку." });
+    }
   } else {
     await prisma.client.update({
       where: { id: pending.clientId },

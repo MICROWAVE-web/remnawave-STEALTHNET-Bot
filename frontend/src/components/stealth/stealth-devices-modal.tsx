@@ -94,12 +94,12 @@ export function StealthDevicesModal({ open, onClose, onChanged }: Props) {
         </div>
 
         {err && (
-          <div className="rounded-xl bg-rose-500/10 border border-rose-500/30 p-3 text-xs text-rose-200">{err}</div>
+          <div className="rounded-xl bg-saccent-500/10 border border-saccent-500/30 p-3 text-xs text-saccent-200">{err}</div>
         )}
 
         {loading ? (
           <div className="flex justify-center py-6">
-            <Loader2 className="h-5 w-5 animate-spin text-rose-500" />
+            <Loader2 className="h-5 w-5 animate-spin text-saccent-500" />
           </div>
         ) : devices.length === 0 ? (
           <div className="rounded-2xl border border-white/[0.06] bg-zinc-950/40 p-6 text-center">
@@ -119,7 +119,7 @@ export function StealthDevicesModal({ open, onClose, onChanged }: Props) {
                   key={d.hwid}
                   className={cn(
                     "rounded-2xl border bg-zinc-950/40 p-3 flex items-center gap-3 transition-colors",
-                    isConfirm ? "border-rose-500/40" : "border-white/[0.06]",
+                    isConfirm ? "border-saccent-500/40" : "border-white/[0.06]",
                   )}
                 >
                   <div className="h-10 w-10 rounded-xl bg-zinc-800/60 border border-white/10 flex items-center justify-center shrink-0">
@@ -136,7 +136,7 @@ export function StealthDevicesModal({ open, onClose, onChanged }: Props) {
                       <button
                         onClick={() => remove(d.hwid)}
                         disabled={isRemoving}
-                        className="rounded-lg bg-rose-500 hover:bg-rose-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50 transition"
+                        className="rounded-lg bg-saccent-500 hover:bg-saccent-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50 transition"
                       >
                         {isRemoving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Удалить"}
                       </button>
@@ -151,7 +151,7 @@ export function StealthDevicesModal({ open, onClose, onChanged }: Props) {
                   ) : (
                     <button
                       onClick={() => setConfirm(d.hwid)}
-                      className="h-8 w-8 rounded-lg hover:bg-rose-500/10 flex items-center justify-center text-rose-400/70 hover:text-rose-400 transition shrink-0"
+                      className="h-8 w-8 rounded-lg hover:bg-saccent-500/10 flex items-center justify-center text-saccent-400/70 hover:text-saccent-400 transition shrink-0"
                       aria-label="Удалить"
                     >
                       <Trash2 className="h-4 w-4" />

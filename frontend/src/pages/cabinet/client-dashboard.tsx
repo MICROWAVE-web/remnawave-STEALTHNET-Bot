@@ -129,8 +129,92 @@ function parseSubscription(sub: unknown): {
  */
 export function ClientDashboardPage() {
   const design = useCabinetDesign();
-  if (design === "stealth") return <StealthDashboard />;
-  return <ClassicDashboardPage />;
+  return (
+    <>
+      <LinkTelegramPrompt />
+      {design === "stealth" ? <StealthDashboard /> : <ClassicDashboardPage />}
+    </>
+  );
+}
+
+const TG_LINK_PROMPT_KEY = "stn_tg_link_prompt_dismissed";
+
+/**
+ * Всплывающее предложение привязать Telegram сразу после регистрации на сайте
+ * (схема Алекса). Показывается один раз (localStorage-флаг), когда:
+ *   - Telegram ещё не привязан,
+ *   - открыт веб-кабинет (не мини-апп — там TG привязывается мгновенно),
+ *   - известен @username бота (иначе диплинк не построить).
+ * «Привязать» → запрашивает код и открывает t.me/<bot>?start=link_<code>.
+ * «Позже» → закрывает и больше не показывает.
+ */
+function LinkTelegramPrompt() {
+  const { t } = useTranslation();
+  const { state } = useClientAuth();
+  const config = useCabinetConfig();
+  const isMiniapp = useCabinetMiniapp();
+  const token = state.token;
+  const client = state.client;
+  const botUsername = (config?.telegramBotUsername ?? "").replace(/^@/, "");
+
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isMiniapp) return;
+    if (!client || client.telegramId) return;
+    if (!botUsername) return;
+    let dismissed = false;
+    try { dismissed = localStorage.getItem(TG_LINK_PROMPT_KEY) === "1"; } catch { dismissed = false; }
+    if (dismissed) return;
+    setOpen(true);
+  }, [client, isMiniapp, botUsername]);
+
+  function dismiss() {
+    try { localStorage.setItem(TG_LINK_PROMPT_KEY, "1"); } catch { /* ignore */ }
+    setOpen(false);
+  }
+
+  async function linkNow() {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const res = await api.clientLinkTelegramRequest(token);
+      const uname = (res.botUsername ?? botUsername).replace(/^@/, "");
+      const url = `https://t.me/${uname}?start=link_${res.code}`;
+      try { localStorage.setItem(TG_LINK_PROMPT_KEY, "1"); } catch { /* ignore */ }
+      setOpen(false);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch {
+      // если код не выдался — просто закрываем, юзер сделает привязку в профиле
+      dismiss();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) dismiss(); }}>
+      <DialogContent className="max-w-sm">
+        <div className="flex flex-col items-center text-center gap-3 py-2">
+          <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center">
+            <Send className="h-7 w-7 text-primary" />
+          </div>
+          <DialogTitle className="text-lg">{t("cabinet.link_prompt.title")}</DialogTitle>
+          <DialogDescription className="text-sm">{t("cabinet.link_prompt.desc")}</DialogDescription>
+          <div className="flex flex-col gap-2 w-full mt-2">
+            <Button onClick={linkNow} disabled={loading} className="w-full gap-2">
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {t("cabinet.link_prompt.link")}
+            </Button>
+            <Button variant="ghost" onClick={dismiss} className="w-full">
+              {t("cabinet.link_prompt.later")}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function ClassicDashboardPage() {

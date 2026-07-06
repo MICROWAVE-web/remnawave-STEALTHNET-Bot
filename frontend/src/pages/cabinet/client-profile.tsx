@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
-import { User, Wallet, Copy, Check, CreditCard, Loader2, Link2, Mail, Fingerprint, CalendarDays, Shield, KeyRound, Monitor, Trash2, Zap } from "lucide-react";
+import { User, Wallet, Copy, Check, CreditCard, Loader2, Link2, Mail, Fingerprint, CalendarDays, Shield, KeyRound, Monitor, Trash2, Zap, Send } from "lucide-react";
 import { useCabinetDesign } from "@/lib/use-cabinet-design";
 import { StealthProfile } from "@/pages/cabinet/stealth/stealth-profile";
 import { QRCodeSVG } from "qrcode.react";
@@ -686,6 +686,17 @@ function ClassicProfilePage() {
                     <p className="text-sm font-medium">{t("cabinet.profile.link_code")}</p>
                     <p className="font-mono text-xl tracking-wider font-bold text-primary">{linkTelegramCode}</p>
                   </div>
+                  {telegramBotUsername && (
+                    <a
+                      href={`https://t.me/${telegramBotUsername.replace(/^@/, "")}?start=link_${linkTelegramCode}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90"
+                    >
+                      <Send className="w-4 h-4" />
+                      {t("cabinet.profile.link_open_bot")}
+                    </a>
+                  )}
                   <p className="text-xs text-muted-foreground/80">
                     {t("cabinet.profile.link_code_hint")} <code className="bg-primary/10 text-primary font-mono px-1.5 py-0.5 rounded">/link {linkTelegramCode}</code><br />{t("cabinet.profile.link_code_expires")}
                   </p>

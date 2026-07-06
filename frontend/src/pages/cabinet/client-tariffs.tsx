@@ -890,9 +890,11 @@ function ClassicTariffsPage() {
                     <p className="text-sm font-bold">
                       {convPreview.mode === "extend"
                         ? "Этот тариф у вас уже есть — подписка будет продлена"
-                        : convPreview.subscription.isTrial
-                          ? "Пробная подписка станет платной"
-                          : `Подписка #${convPreview.subscription.index} будет обновлена`}
+                        : convPreview.mode === "replace"
+                          ? "Текущая подписка будет заменена новым тарифом"
+                          : convPreview.subscription.isTrial
+                            ? "Пробная подписка станет платной"
+                            : `Подписка #${convPreview.subscription.index} будет обновлена`}
                     </p>
                     <p className="text-xs text-muted-foreground leading-relaxed">
                       {convPreview.mode === "extend" ? (
@@ -901,6 +903,8 @@ function ClassicTariffsPage() {
                         <b>{formatRuDays(convPreview.purchasedDays ?? 0)}</b> ={" "}
                         <b className="text-violet-400">{formatRuDays(convPreview.totalDays ?? 0)}</b>.
                         Устройства и серверы останутся как есть.</>
+                      ) : convPreview.mode === "replace" ? (
+                      <>Старая подписка{convPreview.subscription.tariffName ? <> «<b>{convPreview.subscription.tariffName}</b>»</> : " (текущая)"} удалится, остаток <b>{formatRuDays(convPreview.remainingDays ?? 0)}</b> сгорит. Создастся новая на выбранный тариф — <b className="text-violet-400">{formatRuDays(convPreview.purchasedDays ?? 0)}</b> с нуля (VPN-ссылка сохранится).</>
                       ) : (
                       <>Покупка не создаст вторую подписку — она обновит
                       {convPreview.subscription.tariffName ? <> «<b>{convPreview.subscription.tariffName}</b>»</> : " текущую"}
@@ -911,6 +915,9 @@ function ClassicTariffsPage() {
                       ) : null}</>
                       )}
                     </p>
+                    {(convPreview.othersToRemove ?? 0) > 0 && (
+                      <p className="text-xs font-bold text-amber-400">⚠️ Остальные {convPreview.othersToRemove} ваши подписки будут удалены — останется одна.</p>
+                    )}
                     {convPreview.mode !== "extend" && (convPreview.extras?.extraDevices ?? 0) === 0 && (convPreview.totalDays ?? 0) > 0 && (
                       <p className="text-xs font-bold text-violet-400">
                         Итого: {formatRuDays(convPreview.totalDays ?? 0)} нового тарифа

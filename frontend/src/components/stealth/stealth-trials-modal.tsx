@@ -84,9 +84,9 @@ export function StealthTrialsModal({ open, onClose, onActivated }: Props) {
         )}
 
         {!loading && error && (
-          <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 flex items-start gap-2 text-xs">
-            <AlertCircle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
-            <span className="text-rose-200">{error}</span>
+          <div className="rounded-xl border border-saccent-500/30 bg-saccent-500/10 p-3 flex items-start gap-2 text-xs">
+            <AlertCircle className="h-4 w-4 text-saccent-400 shrink-0 mt-0.5" />
+            <span className="text-saccent-200">{error}</span>
           </div>
         )}
 
@@ -119,16 +119,16 @@ export function StealthTrialsModal({ open, onClose, onActivated }: Props) {
                     disabled={isDisabled || isActivating}
                     className={cn(
                       "w-full text-left rounded-2xl border bg-white/[0.03] border-white/[0.07] p-4 transition",
-                      "hover:border-rose-500/40 hover:bg-rose-500/[0.06] active:scale-[0.99]",
+                      "hover:border-saccent-500/40 hover:bg-saccent-500/[0.06] active:scale-[0.99]",
                       isDisabled && "opacity-50 pointer-events-none",
-                      isActivating && "border-rose-500/40 bg-rose-500/[0.06]",
+                      isActivating && "border-saccent-500/40 bg-saccent-500/[0.06]",
                     )}
                   >
                     <div className="flex items-start gap-3">
-                      <span className="shrink-0 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500/15 border border-rose-500/30">
+                      <span className="shrink-0 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-saccent-500/15 border border-saccent-500/30">
                         {isActivating
-                          ? <Loader2 className="h-5 w-5 text-rose-400 animate-spin" />
-                          : <Gift className="h-5 w-5 text-rose-400" />}
+                          ? <Loader2 className="h-5 w-5 text-saccent-400 animate-spin" />
+                          : <Gift className="h-5 w-5 text-saccent-400" />}
                       </span>
                       <div className="flex-1 min-w-0">
                         <h4 className="text-sm font-bold tracking-tight leading-tight">
@@ -146,18 +146,18 @@ export function StealthTrialsModal({ open, onClose, onActivated }: Props) {
                         )}
                         <div className="flex flex-wrap gap-1.5 mt-2.5">
                           <span className="inline-flex items-center gap-1 rounded-full bg-white/[0.04] border border-white/[0.06] px-2.5 py-1 text-[11px] text-zinc-200">
-                            <Clock className="h-3 w-3 text-rose-400/80" />
+                            <Clock className="h-3 w-3 text-saccent-400/80" />
                             {formatRuDays(trial.durationDays)}
                           </span>
                           <span className="inline-flex items-center gap-1 rounded-full bg-white/[0.04] border border-white/[0.06] px-2.5 py-1 text-[11px] text-zinc-200">
                             {trial.trafficLimitBytes === null
-                              ? <InfinityIcon className="h-3 w-3 text-rose-400/80" />
-                              : <Wifi className="h-3 w-3 text-rose-400/80" />}
+                              ? <InfinityIcon className="h-3 w-3 text-saccent-400/80" />
+                              : <Wifi className="h-3 w-3 text-saccent-400/80" />}
                             {traffic}
                           </span>
                           {devices !== null && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-white/[0.04] border border-white/[0.06] px-2.5 py-1 text-[11px] text-zinc-200">
-                              <Smartphone className="h-3 w-3 text-rose-400/80" />
+                              <Smartphone className="h-3 w-3 text-saccent-400/80" />
                               {devices === 1 ? "1 устройство" : `${devices} устройств${devices >= 5 ? "" : "а"}`}
                             </span>
                           )}

@@ -68,6 +68,12 @@ function unwrapRemnaSub(sub: unknown): Record<string, unknown> | null {
 
 export function StealthDashboard() {
   const { state, refreshProfile } = useClientAuth();
+  const [heroImage, setHeroImage] = useState<string | null>(null);
+  useEffect(() => {
+    api.getPublicConfig()
+      .then((c) => setHeroImage((c as { stealthHeroImage?: string | null }).stealthHeroImage || null))
+      .catch(() => {});
+  }, []);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [subs, setSubs] = useState<SubCard[] | null>(null);
@@ -187,7 +193,7 @@ export function StealthDashboard() {
         <motion.div
           className="absolute inset-0"
           style={{
-            background: "radial-gradient(closest-side, rgba(255,35,87,0.22), transparent 65%)",
+            background: "radial-gradient(closest-side, rgb(var(--stealth-accent) / 0.22), transparent 65%)",
             filter: "blur(14px)",
           }}
           animate={{ opacity: [0.7, 1, 0.7], scale: [1, 1.06, 1] }}
@@ -195,17 +201,21 @@ export function StealthDashboard() {
         />
         {/* внешнее тающее кольцо-эхо */}
         <motion.div
-          className="absolute h-44 w-44 md:h-56 md:w-56 rounded-full border border-rose-500/15"
+          className="absolute h-44 w-44 md:h-56 md:w-56 rounded-full border border-saccent-500/15"
           animate={{ scale: [1, 1.12, 1], opacity: [0.5, 0.15, 0.5] }}
           transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut" }}
           aria-hidden="true"
         />
         <motion.div
-          className="relative h-32 w-32 md:h-40 md:w-40 rounded-full bg-gradient-to-br from-zinc-900 to-black border border-rose-500/25 flex items-center justify-center shadow-[0_0_70px_-10px_rgba(255,35,87,0.55),inset_0_0_34px_rgba(255,35,87,0.12)]"
+          className="relative h-32 w-32 md:h-40 md:w-40 rounded-full bg-gradient-to-br from-zinc-900 to-black border border-saccent-500/25 flex items-center justify-center shadow-[0_0_70px_-10px_rgb(var(--stealth-accent)_/_0.55),inset_0_0_34px_rgb(var(--stealth-accent)_/_0.12)]"
           animate={{ scale: [1, 1.03, 1] }}
           transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut" }}
         >
-          <Shield className="h-14 w-14 md:h-16 md:w-16 text-rose-500 drop-shadow-[0_0_12px_rgba(255,35,87,0.6)]" strokeWidth={1.5} />
+          {heroImage ? (
+            <img src={heroImage} alt="" className="h-16 w-16 md:h-20 md:w-20 object-contain drop-shadow-[0_0_12px_rgb(var(--stealth-accent)_/_0.6)]" />
+          ) : (
+            <Shield className="h-14 w-14 md:h-16 md:w-16 text-saccent-500 drop-shadow-[0_0_12px_rgb(var(--stealth-accent)_/_0.6)]" strokeWidth={1.5} />
+          )}
         </motion.div>
       </div>
 
@@ -240,7 +250,7 @@ export function StealthDashboard() {
                 className={cn(
                   "relative rounded-2xl border p-3.5 space-y-2.5 transition-all duration-300 backdrop-blur-xl",
                   s.isActive
-                    ? "bg-white/[0.04] border-white/[0.09] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] hover:border-rose-500/30 hover:shadow-[0_0_40px_-12px_rgba(255,35,87,0.45),inset_0_1px_0_rgba(255,255,255,0.05)]"
+                    ? "bg-white/[0.04] border-white/[0.09] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] hover:border-saccent-500/30 hover:shadow-[0_0_40px_-12px_rgb(var(--stealth-accent)_/_0.45),inset_0_1px_0_rgba(255,255,255,0.05)]"
                     : "bg-zinc-900/40 border-white/[0.05]",
                 )}
               >
@@ -263,7 +273,7 @@ export function StealthDashboard() {
                       {s.emoji ? `${s.emoji} ` : ""}{s.label}
                     </span>
                     {s.isTrial && (
-                      <span className="shrink-0 rounded-md bg-rose-500/10 border border-rose-500/25 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-rose-400">
+                      <span className="shrink-0 rounded-md bg-saccent-500/10 border border-saccent-500/25 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-saccent-400">
                         проба
                       </span>
                     )}
@@ -285,7 +295,7 @@ export function StealthDashboard() {
                     тянутся flex-1 (min-w-0) и переносят/обрезают подпись при нехватке места. */}
                 <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2">
                   <span className="inline-flex items-center gap-1.5 text-[11px] text-zinc-500 tabular-nums shrink-0">
-                    <Calendar className="h-3 w-3 text-rose-400/80" strokeWidth={2.2} />
+                    <Calendar className="h-3 w-3 text-saccent-400/80" strokeWidth={2.2} />
                     до {formatDate(s.expiresAt)}
                   </span>
                   <div className="flex items-center gap-1.5 ml-auto min-w-0">
@@ -297,7 +307,7 @@ export function StealthDashboard() {
                           if (s.isTrial) navigate(`/cabinet/tariffs?extend=${encodeURIComponent(s.id)}`);
                           else setExtendSubId(s.id);
                         }}
-                        className="min-w-0 flex-1 justify-center rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/25 hover:border-rose-500/45 px-3 py-1.5 text-xs font-bold text-rose-400 transition-all duration-300 hover:shadow-[0_0_20px_-6px_rgba(255,35,87,0.55)] active:scale-95 inline-flex items-center gap-1.5"
+                        className="min-w-0 flex-1 justify-center rounded-xl bg-saccent-500/10 hover:bg-saccent-500/20 border border-saccent-500/25 hover:border-saccent-500/45 px-3 py-1.5 text-xs font-bold text-saccent-400 transition-all duration-300 hover:shadow-[0_0_20px_-6px_rgb(var(--stealth-accent)_/_0.55)] active:scale-95 inline-flex items-center gap-1.5"
                       >
                         <Zap className="h-3 w-3 shrink-0" />
                         <span className="truncate">{s.isTrial ? "Конвертировать" : "Продлить"}</span>
@@ -342,7 +352,7 @@ export function StealthDashboard() {
                       </button>
                     </div>
                     {autoRenewError?.id === s.id && (
-                      <p className="text-[10px] leading-snug text-rose-400">{autoRenewError.message}</p>
+                      <p className="text-[10px] leading-snug text-saccent-400">{autoRenewError.message}</p>
                     )}
                   </div>
                 )}
@@ -369,7 +379,7 @@ export function StealthDashboard() {
           <StadiumButton
             variant="ghost"
             size="md"
-            iconLeft={hasAnySub ? <Plus className="h-4 w-4 text-rose-400" /> : <Zap className="h-4 w-4 text-rose-400" />}
+            iconLeft={hasAnySub ? <Plus className="h-4 w-4 text-saccent-400" /> : <Zap className="h-4 w-4 text-saccent-400" />}
             onClick={() => navigate("/cabinet/tariffs")}
           >
             {hasAnySub ? "Оформить ещё подписку" : "Оформить подписку"}
@@ -380,8 +390,8 @@ export function StealthDashboard() {
               variant="highlight"
               size="md"
               iconLeft={
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-rose-500/15 border border-rose-500/30">
-                  <Gift className="h-3.5 w-3.5 text-rose-400" />
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-saccent-500/15 border border-saccent-500/30">
+                  <Gift className="h-3.5 w-3.5 text-saccent-400" />
                 </span>
               }
               iconRight={<ChevronRight className="h-4 w-4 text-zinc-500" />}
@@ -395,8 +405,8 @@ export function StealthDashboard() {
             variant="highlight"
             size="md"
             iconLeft={
-              <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-rose-500/15 border border-rose-500/30">
-                <Settings2 className="h-3.5 w-3.5 text-rose-400" />
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-saccent-500/15 border border-saccent-500/30">
+                <Settings2 className="h-3.5 w-3.5 text-saccent-400" />
               </span>
             }
             iconRight={<ChevronRight className="h-4 w-4 text-zinc-500" />}

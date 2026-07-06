@@ -1895,6 +1895,7 @@
       "get_code": "Get code",
       "link_code": "Linking code",
       "link_code_hint": "Send the bot",
+      "link_open_bot": "Open Telegram & link",
       "link_code_expires": "Code expires in 10 minutes.",
       "link_email_sent": "Sent, check your email.",
       "link_email_error": "Sending error",
@@ -1935,6 +1936,12 @@
       "transactions_count_many": "transactions",
       "payment_failed": "Failed",
       "payment_refunded": "Refunded"
+    },
+    "link_prompt": {
+      "title": "Link Telegram?",
+      "desc": "Connect your account to the Telegram bot — subscriptions, balance and referrals in one place, with easier sign-in.",
+      "link": "Link Telegram",
+      "later": "Later"
     },
     "referral": {
       "title": "Referrals",

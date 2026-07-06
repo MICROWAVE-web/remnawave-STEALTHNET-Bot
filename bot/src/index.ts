@@ -585,6 +585,8 @@ const DEFAULT_MENU_TEXTS: Record<string, string> = {
   trafficPrefix: "📈 Трафик — ",
   linkLabel: "🔗 Ссылка подключения:",
   chooseAction: "Выберите действие:",
+  subsCountLabel: "🔢 Подписок: ",
+  subLineFormat: "{{SUB_STATUS}} {{SUB_TYPE}} Подписка #{{SUB_NUM}} — **{{SUB_DAYS}}** до {{SUB_DATE}}{{SUB_TRAFFIC}}",
 };
 
 // дефолтная видимость строк welcome-меню.
@@ -1068,9 +1070,16 @@ function formatSubLine(item: {
   /** T16 (12.05.2026) — название тарифа и кастомный эмодзи для главного меню. */
   tariffDisplayName?: string | null;
   tariffMenuEmoji?: string | null;
-}): string {
+}, template?: string): string {
   const { idx, typeEmoji, statusEmojiBig, daysStr, dateStr, trafficSuffix } = parseSubInfo(item);
-  return `${statusEmojiBig} ${typeEmoji} Подписка #${idx} — **${daysStr}** до ${dateStr}${trafficSuffix}`;
+  const tpl = (template && template.trim()) || "{{SUB_STATUS}} {{SUB_TYPE}} Подписка #{{SUB_NUM}} — **{{SUB_DAYS}}** до {{SUB_DATE}}{{SUB_TRAFFIC}}";
+  return tpl
+    .split("{{SUB_STATUS}}").join(statusEmojiBig)
+    .split("{{SUB_TYPE}}").join(typeEmoji)
+    .split("{{SUB_NUM}}").join(String(idx))
+    .split("{{SUB_DAYS}}").join(daysStr)
+    .split("{{SUB_DATE}}").join(dateStr)
+    .split("{{SUB_TRAFFIC}}").join(trafficSuffix);
 }
 
 function buildMainMenuText(opts: {
@@ -1145,13 +1154,13 @@ function buildMainMenuText(opts: {
     };
     if (allSubs && allSubs.items.length > 0) {
       pushRaw("");
-      pushRaw(`🔢 Подписок: **${allSubs.items.length}**`);
+      pushLine("subsCountLabel", t(menuTexts, "subsCountLabel") + `**${allSubs.items.length}**`);
       const sorted = [...allSubs.items].sort((a, b) => {
         if (a.type !== b.type) return a.type === "root" ? -1 : 1;
         return (a.subscriptionIndex ?? 0) - (b.subscriptionIndex ?? 0);
       });
       for (const item of sorted) {
-        pushRaw(formatSubLine(item));
+        pushRaw(formatSubLine(item, t(menuTexts, "subLineFormat")));
       }
     }
   }
@@ -1293,6 +1302,195 @@ function logoToMediaSource(logo: string | null | undefined): { source: InputFile
     // ignore
   }
   return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+//  Rich Messages (Telegram Bot API 10.1) — helpers
+//  grammY не типизирует sendRichMessage → зовём через api.raw (Proxy, прокси-aware),
+//  с fallback на прямой HTTP. Старым клиентам прилетит "обновитесь" (решение: только rich).
+// ─────────────────────────────────────────────────────────────────────────
+
+type RichInlineKeyboard = { inline_keyboard: unknown[][] };
+
+/**
+ * Публичный URL логотипа для rich `![](url)` (бэкенд отдаёт байты на /api/public/bot-asset/logo.png).
+ * Берём logoBot (логотип из админки) → botWelcomeImage. Если ни того ни другого нет — null
+ * (картинку не вставляем). `?v=<len>` — cache-bust: Telegram кэширует картинку по URL,
+ * при смене логотипа в админке длина меняется → новый URL → Telegram перезапрашивает.
+ */
+function botLogoUrl(config: { publicAppUrl?: string | null; logoBot?: string | null; botWelcomeImage?: string | null } | null | undefined): string | null {
+  const base = (config?.publicAppUrl ?? "").replace(/\/+$/, "");
+  if (!base) return null;
+  const logo = config?.logoBot || config?.botWelcomeImage || "";
+  if (!logo) return null;
+  return `${base}/api/public/bot-asset/logo.png?v=${logo.length}`;
+}
+
+/** Экранирование текста для ячейки rich-таблицы (| и переводы строк ломают разметку). */
+function richCell(s: string | null | undefined): string {
+  return String(s ?? "").replace(/\|/g, "\\|").replace(/\r?\n/g, " ").trim();
+}
+
+/** Компактный GB: "0.00"→"0", "5.00"→"5", "2.34"→"2.3" (чтобы ячейка таблицы не переносилась). */
+function gbCompact(gbStr: string | null): string {
+  if (gbStr == null) return "—";
+  const n = parseFloat(gbStr);
+  if (!Number.isFinite(n)) return gbStr;
+  if (Number.isInteger(n)) return String(n);
+  return n < 10 ? n.toFixed(1) : String(Math.round(n));
+}
+
+/** Склонение «день/дня/дней». */
+function pluralDays(n: number): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return "день";
+  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return "дня";
+  return "дней";
+}
+
+/** Статус + дни + трафик + устройства из subscription-объекта (как в buildMainMenuText). */
+function richSubStats(subscription: unknown): {
+  status: string;
+  daysLeft: number | null;
+  trafficUsedGb: string | null;
+  trafficLimitGb: string | null;
+  trafficPct: number | null;
+  devicesUsed: number | null;
+  deviceLimit: number | null;
+} {
+  const u = getSubUser(subscription) as Record<string, any> | null;
+  const empty = { status: "—", daysLeft: null, trafficUsedGb: null, trafficLimitGb: null, trafficPct: null, devicesUsed: null, deviceLimit: null };
+  if (!u) return empty;
+
+  const expireAt = u.expireAt ?? u.expirationDate ?? u.expire_at;
+  let expireDate: Date | null = null;
+  if (expireAt != null) {
+    const d = typeof expireAt === "number" ? new Date(expireAt * 1000) : new Date(String(expireAt));
+    if (!Number.isNaN(d.getTime())) expireDate = d;
+  }
+  const status = String(u.status ?? u.userStatus ?? "ACTIVE");
+  const daysLeft =
+    expireDate && expireDate > new Date()
+      ? Math.max(0, Math.ceil((expireDate.getTime() - Date.now()) / 86_400_000))
+      : null;
+
+  // устройства
+  const dlRaw = u.hwidDeviceLimit ?? u.deviceLimit ?? u.device_limit;
+  const deviceLimit = typeof dlRaw === "number" ? dlRaw : dlRaw != null && Number.isFinite(Number(dlRaw)) ? Number(dlRaw) : null;
+  const duRaw = u.devicesUsed ?? u.devices_used;
+  const devicesUsed = duRaw != null && Number.isFinite(Number(duRaw)) ? Number(duRaw) : null;
+
+  // трафик
+  const usedRaw = u.userTraffic?.usedTrafficBytes ?? u.trafficUsedBytes ?? u.usedTrafficBytes ?? u.traffic_used_bytes;
+  const limitRaw = u.trafficLimitBytes ?? u.traffic_limit_bytes;
+  const usedNum = typeof usedRaw === "string" ? parseFloat(usedRaw) : Number(usedRaw);
+  const limitNum = typeof limitRaw === "string" ? parseFloat(limitRaw) : Number(limitRaw);
+  let trafficUsedGb: string | null = null;
+  let trafficLimitGb: string | null = null;
+  let trafficPct: number | null = null;
+  if (Number.isFinite(usedNum)) trafficUsedGb = bytesToGb(usedNum);
+  if (Number.isFinite(limitNum) && limitNum > 0) {
+    trafficLimitGb = bytesToGb(limitNum);
+    trafficPct = Math.round(Math.min(100, (usedNum / limitNum) * 100));
+  }
+  return { status, daysLeft, trafficUsedGb, trafficLimitGb, trafficPct, devicesUsed, deviceLimit };
+}
+
+/** Отправка rich-сообщения (Rich Markdown) с inline-клавиатурой. */
+async function sendRichMarkdown(
+  ctx: { api: { raw?: unknown }; chat?: { id: number } },
+  markdown: string,
+  reply_markup?: RichInlineKeyboard,
+): Promise<unknown> {
+  const chatId = ctx.chat?.id;
+  if (chatId == null) throw new Error("sendRichMarkdown: no chat id");
+  const payload: Record<string, unknown> = { chat_id: chatId, rich_message: { markdown } };
+  if (reply_markup) payload.reply_markup = reply_markup;
+  const raw = (ctx.api as { raw?: Record<string, unknown> }).raw;
+  const fn = raw?.sendRichMessage;
+  if (typeof fn === "function") {
+    return (fn as (p: Record<string, unknown>) => Promise<unknown>).call(raw, payload);
+  }
+  // Fallback: прямой HTTP (прокси-форки разрулим позже; стенд ходит напрямую).
+  const token = process.env.BOT_TOKEN ?? "";
+  const res = await fetch(`https://api.telegram.org/bot${token}/sendRichMessage`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = (await res.json()) as { ok?: boolean; description?: string };
+  if (!data.ok) throw new Error(`sendRichMessage failed: ${data.description ?? JSON.stringify(data)}`);
+  return data;
+}
+
+/** Главное меню в формате Rich Markdown (логотип + заголовок + баланс + таблица подписок). */
+function buildMainMenuRichMarkdown(opts: {
+  serviceName: string;
+  balance: number;
+  currency: string;
+  logoUrl: string | null;
+  allSubs?: {
+    items: Array<{
+      type: "root" | "secondary";
+      subscriptionIndex: number | null;
+      subscription: unknown;
+      tariffDisplayName: string;
+      tariffMenuEmoji?: string | null;
+    }>;
+  } | null;
+  infoBlock?: string | null;
+  menuTexts?: Record<string, string> | null;
+}): string {
+  const { serviceName, balance, currency, logoUrl, allSubs, infoBlock, menuTexts } = opts;
+  const mt = menuTexts ?? null;
+  const name = serviceName.trim() || "Кабинет";
+  const out: string[] = [];
+
+  // Крупный ЖИРНЫЙ заголовок «Добро пожаловать в …» — ВЫШЕ картинки (H1 + **bold**).
+  out.push(`# **${t(mt, "welcomeGreeting")} в ${t(mt, "welcomeTitlePrefix")}${name}**`, "");
+  if (logoUrl) out.push(`![${richCell(name)}](${logoUrl})`, "");
+  out.push(`**${t(mt, "balancePrefix")}${formatMoney(balance, currency)}**`, "");
+
+  const items = allSubs?.items ?? [];
+  if (items.length > 0) {
+    out.push(`## 🔢 Ваши подписки`, "");
+    out.push(`| Подписка | Осталось | Трафик | Устр. |`);
+    out.push(`|---|:---:|:---:|:---:|`);
+    const sorted = [...items].sort((a, b) => {
+      if (a.type !== b.type) return a.type === "root" ? -1 : 1;
+      return (a.subscriptionIndex ?? 0) - (b.subscriptionIndex ?? 0);
+    });
+    for (const it of sorted) {
+      const s = richSubStats(it.subscription);
+      const badge =
+        s.status === "ACTIVE" ? "🟢"
+        : s.status === "EXPIRED" ? "🔴"
+        : s.status === "LIMITED" ? "🟠"
+        : s.status === "DISABLED" ? "⚪"
+        : "🟡";
+      const emoji = it.tariffMenuEmoji ? `${it.tariffMenuEmoji} ` : "";
+      const left = s.daysLeft != null ? `${s.daysLeft} ${pluralDays(s.daysLeft)}` : "—";
+      const traffic =
+        s.trafficUsedGb != null && s.trafficLimitGb != null
+          ? `${gbCompact(s.trafficUsedGb)}/${gbCompact(s.trafficLimitGb)} GB`
+          : s.trafficUsedGb != null
+          ? `${gbCompact(s.trafficUsedGb)} GB`
+          : "—";
+      const devices = s.deviceLimit != null ? `${s.devicesUsed ?? 0}/${s.deviceLimit}` : "—";
+      out.push(`| ${badge} ${emoji}${richCell(it.tariffDisplayName)} | ${left} | ${traffic} | ${devices} |`);
+    }
+    out.push("");
+  } else {
+    out.push(`_Активных подписок пока нет — выбери тариф ниже._`, "");
+  }
+
+  const info = infoBlock?.trim();
+  if (info) {
+    out.push("---", "");
+    for (const line of info.split("\n")) out.push(`> ${richCell(line)}`);
+  }
+  return out.join("\n").trim();
 }
 
 /** Редактировать сообщение: текст и клавиатура (если с фото/анимацией — caption, иначе text) */
@@ -1646,6 +1844,27 @@ composer.command("start", async (ctx) => {
     return;
   }
 
+  // Deep-link привязки Telegram к аккаунту с сайта: /start link_CODE
+  // Пользователь в кабинете нажал «Привязать Telegram» → открылась ссылка
+  // t.me/<bot>?start=link_<code>, которая мгновенно связывает аккаунты
+  // (и при необходимости объединяет их — см. mergeClients на бэкенде).
+  if (/^link_/i.test(payload)) {
+    const lang = getUserLang(from.id);
+    const code = payload.replace(/^link_/i, "").trim();
+    if (!code) {
+      await ctx.reply(_t("link.prompt", lang));
+      return;
+    }
+    try {
+      await api.linkTelegramFromBot(code, from.id, from.username ?? undefined);
+      await ctx.reply(_t("link.success", lang));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : _t("error_generic", lang);
+      await ctx.reply(`❌ ${msg}`);
+    }
+    return;
+  }
+
   // Определяем тип deeplink
   const isPromo = /^promo_/i.test(payload);
   const promoCode = isPromo ? payload.replace(/^promo_/i, "") : undefined;
@@ -1799,16 +2018,37 @@ composer.command("start", async (ctx) => {
       markup.inline_keyboard.push([{ text: "⚙️ Панель админа", callback_data: "admin:menu" }]);
     }
 
-    const media = logoToMediaSource(config?.logoBot);
-    if (media) {
-      const opts = { caption, caption_entities: captionEntities.length ? captionEntities : undefined, reply_markup: markup };
-      if (media.isGif) {
-        await ctx.replyWithAnimation(media.source, opts);
-      } else {
-        await ctx.replyWithPhoto(media.source, opts);
+    // 🎨 Rich-меню (Bot API 10.1) — ВЫКЛЮЧЕНО до следующей обновы (флаг env BOT_RICH_MENU=on).
+    let richMenuSent = false;
+    if (process.env.BOT_RICH_MENU === "on") {
+      try {
+        const richMd = buildMainMenuRichMarkdown({
+          serviceName: name,
+          balance: client?.balance ?? 0,
+          currency: client?.preferredCurrency ?? config?.defaultCurrency ?? "usd",
+          logoUrl: botLogoUrl(config),
+          allSubs: allSubsRes,
+          infoBlock: config?.botInfoBlock ?? null,
+          menuTexts: config?.botMenuTexts ?? config?.resolvedBotMenuTexts ?? null,
+        });
+        await sendRichMarkdown(ctx, richMd, markup as unknown as RichInlineKeyboard);
+        richMenuSent = true;
+      } catch (richErr) {
+        console.error("[/start rich] failed, fallback to plain:", richErr instanceof Error ? richErr.message : richErr);
       }
-    } else {
-      await ctx.reply(text, { entities: entities.length ? entities : undefined, reply_markup: markup });
+    }
+    if (!richMenuSent) {
+      const media = logoToMediaSource(config?.logoBot);
+      if (media) {
+        const opts = { caption, caption_entities: captionEntities.length ? captionEntities : undefined, reply_markup: markup };
+        if (media.isGif) {
+          await ctx.replyWithAnimation(media.source, opts);
+        } else {
+          await ctx.replyWithPhoto(media.source, opts);
+        }
+      } else {
+        await ctx.reply(text, { entities: entities.length ? entities : undefined, reply_markup: markup });
+      }
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Ошибка входа";
@@ -2099,6 +2339,9 @@ async function showPaymentMethodsForTariff(ctx: any, userId: number, tariff: Tar
             convNote += `\n📱 Ваши +${extras.extraDevices} доп. устройств сохранятся (итого ${extras.keep.totalDevices + extraDevices} устройств${newSuffix ? ` — ${extras.keep.totalDevices} прежних${newSuffix}` : ""}) — без доплаты.`;
           }
         }
+      } else if (conv.mode === "replace") {
+        // Глобальный single-режим (мульти-подписки выкл): покупка другого тарифа = ЖЁСТКАЯ замена.
+        convNote = `\n\n🔄 Внимание: покупка ДРУГОГО тарифа ЗАМЕНИТ текущую подписку ${subName}.\nСтарая подписка удалится, остаток ${conv.remainingDays ?? 0} дн. СГОРИТ — создастся новая на выбранный тариф (${conv.purchasedDays ?? 0} дн. с нуля). VPN-ссылка сохранится. Вторая подписка не создаётся.`;
       } else {
         const head = conv.subscription.isTrial
           ? "🔄 Пробная подписка станет платной"
@@ -2121,6 +2364,9 @@ async function showPaymentMethodsForTariff(ctx: any, userId: number, tariff: Tar
             convNote += `\n📱 Ваши +${extras.extraDevices} доп. устройств сохранятся (итого ${extras.keep.totalDevices + extraDevices} устройств${newSuffixConv ? ` — ${extras.keep.totalDevices} прежних${newSuffixConv}` : ""}, конвертация ${extras.keep.convertedDays} дн.).`;
           }
         }
+      }
+      if ((conv.othersToRemove ?? 0) > 0) {
+        convNote += `\n⚠️ Остальные ${conv.othersToRemove} ваши подписки будут УДАЛЕНЫ — останется одна.`;
       }
       if (convHasExtras) {
         extraRows.push([{ text: `📱 Устройства: ${dropChosen ? "убрать ✓" : "сохранить ✓"}`, callback_data: "convx:toggle" }]);
@@ -3726,7 +3972,10 @@ composer.on("callback_query:data", async (ctx) => {
     }
 
     if (data.startsWith("pay_tariff_balance:")) {
-      const tariffId = data.slice("pay_tariff_balance:".length);
+      const tariffIdRaw = data.slice("pay_tariff_balance:".length);
+      // ":go" = юзер подтвердил жёсткую замену на экране-предупреждении балансовой оплаты.
+      const balanceReplaceConfirmed = tariffIdRaw.endsWith(":go");
+      const tariffId = balanceReplaceConfirmed ? tariffIdRaw.slice(0, -3) : tariffIdRaw;
       // если в addsub-режиме — переключаемся на gift/buy (создаёт
       // secondary subscription напрямую с балансом, без webhook'а — отдельный path
       // от обычной activateTariffForClient). Промокод не применяется к доп. подпискам.
@@ -3767,6 +4016,28 @@ composer.on("callback_query:data", async (ctx) => {
         }
         const totalPrice = effectivePrice + subExtrasForPeriod;
         let resultMessage: string;
+        // ── Подтверждение перед ЛЮБОЙ покупкой с баланса, кроме чистого продления ──
+        // Баланс списывает МГНОВЕННО, поэтому до любой операции, затрагивающей текущую
+        // подписку (замена/конвертация/удаление лишних), показываем экран-предупреждение.
+        // Пропускаем только чистое продление того же тарифа (extend без удаления других).
+        if (!balanceReplaceConfirmed) {
+          const convBal = await api.tariffConversionPreview(token, { tariffId, priceOptionId: tariffPriceOptionId }).catch(() => null);
+          if (convBal && convBal.willConvert && (convBal.mode !== "extend" || (convBal.othersToRemove ?? 0) > 0)) {
+            const subNameBal = convBal.subscription?.tariffName ? `«${convBal.subscription.tariffName}»` : "текущую подписку";
+            const bodyBal = convBal.mode === "replace"
+              ? `Старая подписка удалится, остаток ${convBal.remainingDays ?? 0} дн. СГОРИТ — создастся новая на выбранный тариф (${convBal.purchasedDays ?? 0} дн. с нуля). VPN-ссылка сохранится.`
+              : convBal.mode === "extend"
+                ? `Этот тариф у вас уже есть — он будет продлён.`
+                : `Текущая подписка будет переведена на новый тариф. Остаток ${convBal.remainingDays ?? 0} дн. пересчитается в ${convBal.convertedDays ?? 0} дн. по цене нового тарифа.`;
+            const othersLineBal = (convBal.othersToRemove ?? 0) > 0 ? `\n⚠️ Остальные ${convBal.othersToRemove} ваши подписки будут УДАЛЕНЫ — останется одна.` : "";
+            await editMessageContent(
+              ctx,
+              `🔄 Внимание: ${convBal.mode === "extend" ? "продление затронет" : "покупка ЗАМЕНИТ"} ${subNameBal}.\n\n${bodyBal}${othersLineBal}\n\nСписать ${formatMoney(totalPrice, tariff.currency)} с баланса и продолжить?`,
+              { inline_keyboard: [[{ text: "✅ Да, продолжить и списать", callback_data: `pay_tariff_balance:${tariffId}:go` }], [{ text: "◀️ Отмена", callback_data: "menu:tariffs" }]] },
+            );
+            return;
+          }
+        }
         // T7b: продление существующей secondary имеет приоритет над addsub.
         if (extendsSecondarySubId) {
           const discountInfoBal = activeDiscountCode.get(userId);

@@ -227,7 +227,93 @@ export function remnaDisableNode(uuid: string) {
 
 /** POST /api/nodes/{uuid}/actions/restart */
 export function remnaRestartNode(uuid: string) {
-  return remnaFetch<unknown>(`/api/nodes/${uuid}/actions/restart`, { method: "POST" });
+  return remnaFetch<unknown>(`/api/nodes/${uuid}/actions/restart`, { method: "POST", body: JSON.stringify({ forceRestart: false }) });
+}
+
+/** Тело создания/обновления ноды (Remnawave 2.8.x). configProfile обязателен при создании. */
+export interface RemnaNodeInput {
+  name: string;
+  address: string;
+  port?: number | null;
+  countryCode?: string;
+  isTrafficTrackingActive?: boolean;
+  trafficLimitBytes?: number;
+  trafficResetDay?: number;
+  notifyPercent?: number;
+  consumptionMultiplier?: number;
+  note?: string | null;
+  configProfile: { activeConfigProfileUuid: string; activeInbounds: string[] };
+}
+
+/** POST /api/nodes — создать (зарегистрировать) ноду. Обяз.: name(≥3), address, configProfile. */
+export function remnaCreateNode(body: RemnaNodeInput) {
+  return remnaFetch<unknown>("/api/nodes", { method: "POST", body: JSON.stringify(body) });
+}
+
+/** PATCH /api/nodes — обновить ноду (uuid обязателен в теле; остальные поля частичные). */
+export function remnaUpdateNode(body: { uuid: string } & Partial<RemnaNodeInput>) {
+  return remnaFetch<unknown>("/api/nodes", { method: "PATCH", body: JSON.stringify(body) });
+}
+
+/** DELETE /api/nodes/{uuid} — удалить ноду. */
+export function remnaDeleteNode(uuid: string) {
+  return remnaFetch<unknown>(`/api/nodes/${uuid}`, { method: "DELETE" });
+}
+
+/** GET /api/config-profiles — config-профили (+ inbounds) для формы создания ноды. */
+export function remnaGetConfigProfiles() {
+  return remnaFetch<unknown>("/api/config-profiles");
+}
+
+/** GET /api/keygen — публичный ключ панели (SSL_CERT), нужен для install-команды новой ноды. */
+export function remnaGetPubKey() {
+  return remnaFetch<unknown>("/api/keygen");
+}
+
+// ─── Internal squads: CRUD (Remnawave 2.8.x) ───
+/** POST /api/internal-squads — создать сквад. Обяз.: name, inbounds[] (uuid инбаундов). */
+export function remnaCreateInternalSquad(body: { name: string; inbounds: string[] }) {
+  return remnaFetch<unknown>("/api/internal-squads", { method: "POST", body: JSON.stringify(body) });
+}
+/** PATCH /api/internal-squads — обновить сквад (uuid в теле). */
+export function remnaUpdateInternalSquad(body: { uuid: string; name?: string; inbounds?: string[] }) {
+  return remnaFetch<unknown>("/api/internal-squads", { method: "PATCH", body: JSON.stringify(body) });
+}
+/** DELETE /api/internal-squads/{uuid} */
+export function remnaDeleteInternalSquad(uuid: string) {
+  return remnaFetch<unknown>(`/api/internal-squads/${uuid}`, { method: "DELETE" });
+}
+
+// ─── Hosts: CRUD (Remnawave 2.8.x) ───
+/** GET /api/hosts — список хостов. */
+export function remnaGetHosts() {
+  return remnaFetch<unknown>("/api/hosts");
+}
+/** POST /api/hosts — создать хост. Обяз.: inbound, remark, address, port (+ опц. sni/host/path/tags/security/alpn/…). */
+export function remnaCreateHost(body: Record<string, unknown>) {
+  return remnaFetch<unknown>("/api/hosts", { method: "POST", body: JSON.stringify(body) });
+}
+/** PATCH /api/hosts — обновить хост (uuid в теле). */
+export function remnaUpdateHost(body: { uuid: string } & Record<string, unknown>) {
+  return remnaFetch<unknown>("/api/hosts", { method: "PATCH", body: JSON.stringify(body) });
+}
+/** DELETE /api/hosts/{uuid} */
+export function remnaDeleteHost(uuid: string) {
+  return remnaFetch<unknown>(`/api/hosts/${uuid}`, { method: "DELETE" });
+}
+
+// ─── Config profiles: CRUD (Remnawave 2.8.x) ───
+/** POST /api/config-profiles — создать профиль. Обяз.: name, config (Xray-конфиг JSON). */
+export function remnaCreateConfigProfile(body: { name: string; config?: unknown }) {
+  return remnaFetch<unknown>("/api/config-profiles", { method: "POST", body: JSON.stringify(body) });
+}
+/** PATCH /api/config-profiles — обновить профиль (uuid в теле). */
+export function remnaUpdateConfigProfile(body: { uuid: string; name?: string; config?: unknown }) {
+  return remnaFetch<unknown>("/api/config-profiles", { method: "PATCH", body: JSON.stringify(body) });
+}
+/** DELETE /api/config-profiles/{uuid} */
+export function remnaDeleteConfigProfile(uuid: string) {
+  return remnaFetch<unknown>(`/api/config-profiles/${uuid}`, { method: "DELETE" });
 }
 
 /** POST /api/users/{uuid}/actions/revoke — отозвать подписку */
@@ -459,4 +545,211 @@ export async function encryptSubscriptionUrlInPlace(data: unknown): Promise<void
   } catch {
     // не падаем — оригинальная ссылка останется
   }
+}
+
+/** POST /api/nodes/{uuid}/actions/reset-traffic — обнулить счётчик трафика ноды (API 2.8) */
+export function remnaResetNodeTraffic(uuid: string) {
+  return remnaFetch(`/api/nodes/${uuid}/actions/reset-traffic`, { method: "POST" });
+}
+
+/** POST /api/nodes/actions/restart-all — перезапустить ВСЕ ноды (API 2.8) */
+export function remnaRestartAllNodes() {
+  return remnaFetch("/api/nodes/actions/restart-all", { method: "POST" });
+}
+
+/** GET /api/system/stats/bandwidth — сводка трафика панели (2д/7д/месяц/год, строки уже отформатированы) */
+export function remnaGetBandwidthStats() {
+  return remnaFetch<{
+    response: {
+      bandwidthLastTwoDays?: { current: string; previous: string; difference: string };
+      bandwidthLastSevenDays?: { current: string; previous: string; difference: string };
+      bandwidthCalendarMonth?: { current: string; previous: string; difference: string };
+      bandwidthCurrentYear?: { current: string; previous: string; difference: string };
+    };
+  }>("/api/system/stats/bandwidth");
+}
+
+/** GET /api/infra-billing/nodes — учёт оплат серверов (nextBillingAt по нодам, API 2.8) */
+export function remnaGetInfraBillingNodes() {
+  return remnaFetch<{
+    response: {
+      totalBillingNodes?: number;
+      billingNodes?: {
+        uuid: string;
+        provider?: { uuid: string; name?: string; loginUrl?: string; faviconLink?: string } | null;
+        node?: { uuid: string; name?: string; countryCode?: string } | null;
+        nextBillingAt?: string;
+      }[];
+    };
+  }>("/api/infra-billing/nodes");
+}
+
+/* ═══ API 2.8 — расширенный набор (шаблоны/HWID/recap/hosts-bulk/torrent/drop) ═══ */
+
+export type RemnaTemplateType = "XRAY_JSON" | "XRAY_BASE64" | "MIHOMO" | "STASH" | "CLASH" | "SINGBOX";
+
+/** GET /api/subscription-templates — список шаблонов (без контента) */
+export function remnaGetSubTemplates() {
+  return remnaFetch<{ response: { uuid: string; name: string; templateType: RemnaTemplateType; viewPosition?: number }[] }>(
+    "/api/subscription-templates",
+  );
+}
+
+/** GET /api/subscription-templates/{uuid} — полный шаблон */
+export function remnaGetSubTemplate(uuid: string) {
+  return remnaFetch<{ response: { uuid: string; name: string; templateType: RemnaTemplateType; viewPosition?: number; templateJson?: unknown; encodedTemplateYaml?: string } }>(
+    `/api/subscription-templates/${uuid}`,
+  );
+}
+
+/** PATCH /api/subscription-templates — обновить шаблон (body с uuid) */
+export function remnaUpdateSubTemplate(body: { uuid: string; name?: string; templateJson?: unknown; encodedTemplateYaml?: string }) {
+  return remnaFetch("/api/subscription-templates", { method: "PATCH", body: JSON.stringify(body) });
+}
+
+/** GET /api/hwid/devices/stats — устройства по платформам/приложениям */
+export function remnaGetHwidStats() {
+  return remnaFetch<{ response: { byPlatform?: { platform: string; count: number; byApp?: { app: string; count: number }[] }[]; totalDevices?: number } }>(
+    "/api/hwid/devices/stats",
+  );
+}
+
+/** GET /api/hwid/devices/top-users — топ юзеров по числу устройств */
+export function remnaGetHwidTopUsers() {
+  return remnaFetch<{ response: { users?: { userUuid: string; id?: number; username: string; devicesCount: number }[] } }>(
+    "/api/hwid/devices/top-users",
+  );
+}
+
+/** GET /api/system/stats/recap — месячная/суммарная сводка панели */
+export function remnaGetRecap() {
+  return remnaFetch<{
+    response: {
+      thisMonth?: { users?: number; traffic?: string };
+      total?: { users?: number; nodes?: number; traffic?: string; nodesRam?: string; nodesCpuCores?: number; distinctCountries?: number };
+      version?: string;
+      initDate?: string;
+    };
+  }>("/api/system/stats/recap");
+}
+
+/** POST /api/hosts/bulk/{action} — массовые действия над хостами */
+export function remnaHostsBulk(action: "enable" | "disable" | "delete", uuids: string[]) {
+  return remnaFetch(`/api/hosts/bulk/${action}`, { method: "POST", body: JSON.stringify({ uuids }) });
+}
+
+/** GET /api/node-plugins/torrent-blocker — отчёты торрент-блокера */
+export function remnaGetTorrentReports(params?: { start?: number; size?: number }) {
+  const qs = new URLSearchParams();
+  if (params?.start != null) qs.set("start", String(params.start));
+  if (params?.size != null) qs.set("size", String(params.size));
+  const q = qs.toString();
+  return remnaFetch<{ response?: unknown }>(`/api/node-plugins/torrent-blocker${q ? "?" + q : ""}`);
+}
+
+/** GET /api/node-plugins/torrent-blocker/stats — статистика торрент-блокера */
+export function remnaGetTorrentStats() {
+  return remnaFetch<{ response?: unknown }>("/api/node-plugins/torrent-blocker/stats");
+}
+
+/** POST /api/ip-control/drop-connections — сбросить соединения (по IP/юзеру) */
+export function remnaDropConnections(dropBy: unknown) {
+  return remnaFetch("/api/ip-control/drop-connections", { method: "POST", body: JSON.stringify({ dropBy }) });
+}
+
+/* ═══ API 2.8 — заход 3: hosts-tags / users-bulk / node-plugins ═══ */
+
+/** GET /api/hosts/tags — все существующие теги хостов */
+export function remnaGetHostTags() {
+  return remnaFetch<{ response: { tags?: string[] } }>("/api/hosts/tags");
+}
+
+/** POST /api/users/bulk/reset-traffic — сброс трафика пачке юзеров */
+export function remnaUsersBulkResetTraffic(uuids: string[]) {
+  return remnaFetch("/api/users/bulk/reset-traffic", { method: "POST", body: JSON.stringify({ uuids }) });
+}
+/** POST /api/users/bulk/revoke-subscription — перевыпуск подписки пачке */
+export function remnaUsersBulkRevoke(uuids: string[]) {
+  return remnaFetch("/api/users/bulk/revoke-subscription", { method: "POST", body: JSON.stringify({ uuids }) });
+}
+/** POST /api/users/bulk/delete — удаление пачки юзеров из Remna */
+export function remnaUsersBulkDelete(uuids: string[]) {
+  return remnaFetch("/api/users/bulk/delete", { method: "POST", body: JSON.stringify({ uuids }) });
+}
+/** POST /api/users/bulk/update-squads — назначить сквады пачке */
+export function remnaUsersBulkUpdateSquads(uuids: string[], activeInternalSquads: string[]) {
+  return remnaFetch("/api/users/bulk/update-squads", { method: "POST", body: JSON.stringify({ uuids, activeInternalSquads }) });
+}
+
+/** GET /api/node-plugins — список плагинов нод */
+export function remnaGetNodePlugins() {
+  return remnaFetch<{ response?: { uuid: string; name: string; viewPosition?: number }[] | { plugins?: unknown[] } }>("/api/node-plugins");
+}
+/** DELETE /api/node-plugins/{uuid} */
+export function remnaDeleteNodePlugin(uuid: string) {
+  return remnaFetch(`/api/node-plugins/${uuid}`, { method: "DELETE" });
+}
+/** PATCH /api/node-plugins — обновить плагин (body с uuid) */
+export function remnaUpdateNodePlugin(body: { uuid: string; name?: string }) {
+  return remnaFetch("/api/node-plugins", { method: "PATCH", body: JSON.stringify(body) });
+}
+
+/* ═══ API 2.8 — зелёный список (infra-billing / sub-settings / hwid-client / squad-users / torrent-truncate) ═══ */
+
+/** GET /api/infra-billing/providers — провайдеры серверов */
+export function remnaGetInfraProviders() {
+  return remnaFetch<{ response: { total?: number; providers?: { uuid: string; name: string; loginUrl?: string; faviconLink?: string }[] } }>("/api/infra-billing/providers");
+}
+export function remnaCreateInfraProvider(body: { name: string; loginUrl?: string; faviconLink?: string }) {
+  return remnaFetch("/api/infra-billing/providers", { method: "POST", body: JSON.stringify(body) });
+}
+export function remnaDeleteInfraProvider(uuid: string) {
+  return remnaFetch(`/api/infra-billing/providers/${uuid}`, { method: "DELETE" });
+}
+/** POST /api/infra-billing/nodes — привязать ноду к биллингу */
+export function remnaCreateInfraBillingNode(body: { providerUuid: string; nodeUuid: string; name?: string; nextBillingAt: string }) {
+  return remnaFetch("/api/infra-billing/nodes", { method: "POST", body: JSON.stringify(body) });
+}
+export function remnaDeleteInfraBillingNode(uuid: string) {
+  return remnaFetch(`/api/infra-billing/nodes/${uuid}`, { method: "DELETE" });
+}
+export function remnaUpdateInfraBillingNode(body: { uuid: string; nextBillingAt?: string; name?: string }) {
+  return remnaFetch("/api/infra-billing/nodes", { method: "PATCH", body: JSON.stringify(body) });
+}
+
+/** GET/PATCH /api/subscription-settings — настройки страницы подписки */
+export function remnaGetSubSettings() {
+  return remnaFetch<{ response: Record<string, unknown> }>("/api/subscription-settings");
+}
+export function remnaUpdateSubSettings(body: Record<string, unknown>) {
+  return remnaFetch("/api/subscription-settings", { method: "PATCH", body: JSON.stringify(body) });
+}
+
+/** GET /api/hwid/devices/{userUuid} — устройства конкретного юзера */
+export function remnaGetUserDevices(userUuid: string) {
+  return remnaFetch<{ response: { total?: number; devices?: { hwid: string; platform?: string; osVersion?: string; deviceModel?: string; userAgent?: string; requestIp?: string; createdAt?: string }[] } }>(`/api/hwid/devices/${userUuid}`);
+}
+/** POST /api/hwid/devices/delete — удалить одно устройство */
+export function remnaDeleteUserDevice(userUuid: string, hwid: string) {
+  return remnaFetch("/api/hwid/devices/delete", { method: "POST", body: JSON.stringify({ userUuid, hwid }) });
+}
+/** POST /api/hwid/devices/delete-all — сбросить все устройства юзера */
+export function remnaDeleteAllUserDevices(userUuid: string) {
+  return remnaFetch("/api/hwid/devices/delete-all", { method: "POST", body: JSON.stringify({ userUuid }) });
+}
+
+/** сквады: доступные ноды + добавить/убрать юзеров */
+export function remnaGetSquadAccessibleNodes(uuid: string) {
+  return remnaFetch<{ response?: unknown }>(`/api/internal-squads/${uuid}/accessible-nodes`);
+}
+export function remnaSquadAddUsers(uuid: string) {
+  return remnaFetch(`/api/internal-squads/${uuid}/bulk-actions/add-users`, { method: "POST", body: JSON.stringify({}) });
+}
+export function remnaSquadRemoveUsers(uuid: string) {
+  return remnaFetch(`/api/internal-squads/${uuid}/bulk-actions/remove-users`, { method: "DELETE" });
+}
+
+/** DELETE /api/node-plugins/torrent-blocker/truncate — очистить отчёты торрент-блокера */
+export function remnaTruncateTorrent() {
+  return remnaFetch("/api/node-plugins/torrent-blocker/truncate", { method: "DELETE" });
 }

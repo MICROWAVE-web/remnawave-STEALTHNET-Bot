@@ -573,7 +573,7 @@ export default function LanguagesPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {languages.map((lang, idx) => {
-            const pct = Math.round(lang.completeness * 100);
+            const pct = Math.min(100, Math.round(lang.completeness));
             const accent =
               pct >= 90
                 ? "emerald"

@@ -16,7 +16,7 @@ import {
   remnaResetUserTraffic,
   remnaDeleteUser,
 } from "../remna/remna.client.js";
-import { createAdditionalSubscription } from "../gift/gift.service.js";
+import { createAdditionalSubscription, deleteSubscription } from "../gift/gift.service.js";
 import { getSystemConfig } from "../client/client.service.js";
 import { upsertSubscriptionByRemnaUuid } from "../subscription/subscription.helpers.js";
 
@@ -620,6 +620,11 @@ export async function extendSecondarySubscription(
    *  (computeConvertedDays), отсчёт от «сейчас», сквады ЗАМЕНЯЮТСЯ на сквады
    *  нового тарифа, трафик начинается заново по новому тарифу. */
   convertMode?: boolean,
+  /** ЖЁСТКАЯ ЗАМЕНА (глобальный single-режим при выключенных мульти-подписках + смена тарифа):
+   *  ведёт себя как convertMode (сброс трафика, замена сквадов, отсчёт expireAt от «сейчас»,
+   *  тот же Remnawave-UUID → ссылка подписки НЕ меняется), НО остаток дней НЕ переносится
+   *  (convertedDays=0) — старые дни сгорают, тариф начинается с нуля. */
+  hardReplace?: boolean,
 ): Promise<ActivationResult> {
   if (!isRemnaConfigured()) return { ok: false, error: "Сервис временно недоступен", status: 503 };
 
@@ -677,7 +682,7 @@ export async function extendSecondarySubscription(
   // трафик начинается заново. Остаток бесплатных дней не конвертируется
   // (currentPricePerDay у триала нет → computeConvertedDays вернёт 0).
   const isTrialConversion = sec.trialId != null;
-  const effectiveConvert = convertMode || isTrialConversion;
+  const effectiveConvert = convertMode || isTrialConversion || hardReplace;
 
   // ── Конвертация: остаток дней переносится pro-rata по ставке, отсчёт от «сейчас» ──
   //
@@ -689,7 +694,7 @@ export async function extendSecondarySubscription(
   //   • ОСТАВЛЯЕТ устройства → они переезжают на новую подписку (новый included +
   //     прежние extra), но новая полная ставка выше (тариф + устройства) — дней МЕНЬШЕ.
   let convertedDays = 0;
-  if (effectiveConvert) {
+  if (effectiveConvert && !hardReplace) {
     const remainingMs = currentExpireAt ? currentExpireAt.getTime() - Date.now() : 0;
     const remainingDays = Math.max(0, Math.floor(remainingMs / 86_400_000));
     if (isTrialConversion) {
@@ -819,12 +824,18 @@ export async function extendSecondarySubscription(
 export async function findConvertibleSubscription(
   clientId: string,
   tariffId: string,
+  /** Мульти-подписки включены (глобально). Если false — single-режим для ЛЮБОГО тарифа:
+   *  любая покупка находит существующую подписку клиента для замены. */
+  multiSubEnabled: boolean = true,
 ): Promise<{ id: string; subscriptionIndex: number; tariffId: string | null; tariffName: string | null; expireAt: Date | null; currentPricePerDay: number | null; trialId: string | null; /** покупается ТОТ ЖЕ тариф → это продление (стек дней), а не конвертация */ sameTariff: boolean } | null> {
   const tariff = await prisma.tariff.findUnique({
     where: { id: tariffId },
     select: { categoryId: true, category: { select: { singleSubscriptionMode: true } } },
   });
-  if (!tariff?.categoryId || !tariff.category?.singleSubscriptionMode) return null;
+  const perCategorySingle = !!(tariff?.categoryId && tariff.category?.singleSubscriptionMode);
+  // Мульти включены → работаем ТОЛЬКО для категорий с singleSubscriptionMode (старое поведение).
+  // Мульти выключены → глобальный single: конвертируем существующую для ЛЮБОГО тарифа.
+  if (multiSubEnabled && !perCategorySingle) return null;
 
   const commonWhere = {
     ownerId: clientId,
@@ -847,6 +858,9 @@ export async function findConvertibleSubscription(
   // 2) иначе любая подписка с тарифом этой категории → конвертация «самой живой».
   // Без приоритета у клиента с несколькими подписками категории «самая живая»
   // перехватывала конвертацию, хотя рядом была подписка ровно с этим тарифом.
+  // Мульти выкл (глобальный single) → берём ЛЮБУЮ подписку клиента (без фильтра категории);
+  // мульти вкл (категория-single) → только подписки той же категории.
+  const secondaryScope = multiSubEnabled ? { tariff: { categoryId: tariff!.categoryId } } : {};
   const candidate =
     (await prisma.subscription.findFirst({
       where: { ...commonWhere, tariffId, trialId: null },
@@ -854,7 +868,7 @@ export async function findConvertibleSubscription(
       select: candidateSelect,
     })) ??
     (await prisma.subscription.findFirst({
-      where: { ...commonWhere, tariff: { categoryId: tariff.categoryId } },
+      where: { ...commonWhere, ...secondaryScope },
       orderBy: { expireAt: { sort: "desc", nulls: "last" } },
       select: candidateSelect,
     }));
@@ -872,6 +886,29 @@ export async function findConvertibleSubscription(
     // «тем же» — переход с пробного на платный всегда конвертация.
     sameTariff: candidate.tariffId === tariffId && candidate.trialId == null,
   };
+}
+
+/**
+ * Single-режим (мульти-подписки ВЫКЛ): оставить у клиента РОВНО ОДНУ подписку.
+ * Удаляет все НЕ-подарочные подписки клиента, кроме keepSubId (remnaDeleteUser + hard delete
+ * через gift.service.deleteSubscription). Подарки/зарезервированные под подарок не трогаем.
+ * Вызывается ПОСЛЕ успешной активации, только когда multiSubscriptionsEnabled=false.
+ */
+export async function consolidateToSingleSubscription(clientId: string, keepSubId: string): Promise<number> {
+  const others = await prisma.subscription.findMany({
+    where: { ownerId: clientId, id: { not: keepSubId }, purchasedAsGift: false, giftStatus: null },
+    select: { id: true },
+  });
+  let deleted = 0;
+  for (const o of others) {
+    try {
+      const r = await deleteSubscription(clientId, o.id);
+      if (r.ok) deleted++;
+    } catch (e) {
+      console.error("[consolidateToSingleSubscription] delete failed:", o.id, e);
+    }
+  }
+  return deleted;
 }
 
 /**
@@ -990,11 +1027,17 @@ export async function activateTariffByPaymentId(paymentId: string): Promise<Acti
     // категории — КОНВЕРТИРУЕМ её (pro-rata остатка + смена тарифа/сквадов) вместо
     // создания второй. Подарки исключение: подарок — всегда новая подписка.
     if (!isGiftPurchase) {
-      const convertible = await findConvertibleSubscription(client.id, tariff.id);
+      // Глобальный тумблер мульти-подписок. Выкл → single-режим для любого тарифа:
+      // покупка другого тарифа ЖЁСТКО заменяет существующую подписку (старые дни сгорают).
+      const multiSubEnabled = ((await getSystemConfig().catch(() => null)) as { multiSubscriptionsEnabled?: boolean } | null)?.multiSubscriptionsEnabled ?? true;
+      const convertible = await findConvertibleSubscription(client.id, tariff.id, multiSubEnabled);
       if (convertible) {
         // юзер выбирает судьбу доп. устройств при конвертации:
         // убрать (бо́льшая конвертация дней) или оставить (устройства переезжают).
         const removeExtrasOnConvert = shouldRemoveExtrasOnActivate(payment.metadata);
+        // мульти выкл + ДРУГОЙ тариф → hardReplace (дни сгорают); мульти вкл (категория-single) + другой → pro-rata convert.
+        const hardReplace = !multiSubEnabled && !convertible.sameTariff;
+        const convertModeFlag = multiSubEnabled && !convertible.sameTariff;
         const result = await extendSecondarySubscription(convertible.id, {
           id: tariff.id,
           durationDays: selectedOption?.durationDays ?? tariff.durationDays,
@@ -1007,8 +1050,8 @@ export async function activateTariffByPaymentId(paymentId: string): Promise<Acti
           internalSquadUuids: tariff.internalSquadUuids,
           trafficResetMode: tariff.trafficResetMode ?? undefined,
           price: selectedOption?.price ?? tariff.price,
-        // тот же тариф → обычное продление (стек), другой → конвертация.
-        }, selectedOption, payment.deviceCount ?? undefined, removeExtrasOnConvert, /* convertMode */ !convertible.sameTariff);
+        // тот же тариф → обычное продление (стек); другой → convert (pro-rata) или hardReplace (с нуля).
+        }, selectedOption, payment.deviceCount ?? undefined, removeExtrasOnConvert, convertModeFlag, hardReplace);
         if (result.ok) {
           // фиксируем конвертацию в платеже: и привязку подписки, и детали для отчётности.
           const meta = (() => {
@@ -1021,6 +1064,10 @@ export async function activateTariffByPaymentId(paymentId: string): Promise<Acti
             data: { subscriptionId: convertible.id, metadata: JSON.stringify(meta) },
           }).catch(() => {});
           await resetOneTimeDiscount();
+          // Single-режим: оставляем ровно одну подписку — удаляем остальные.
+          if (!multiSubEnabled) {
+            await consolidateToSingleSubscription(client.id, convertible.id).catch(() => {});
+          }
           // уведомление админам: покупка конвертировала подписку (best-effort, не ломаем активацию).
           if (!convertible.sameTariff) {
             const convertedDaysNotify = result.convertedDays ?? null;
@@ -1056,6 +1103,11 @@ export async function activateTariffByPaymentId(paymentId: string): Promise<Acti
     if (result.ok) {
       await prisma.payment.update({ where: { id: payment.id }, data: { subscriptionId: result.data.subscriptionId } }).catch(() => {});
       await resetOneTimeDiscount();
+      // Single-режим: подчищаем любые прочие подписки клиента (оставляем эту).
+      const cfgMs2 = await getSystemConfig().catch(() => null);
+      if ((cfgMs2 as { multiSubscriptionsEnabled?: boolean } | null)?.multiSubscriptionsEnabled === false) {
+        await consolidateToSingleSubscription(client.id, result.data.subscriptionId).catch(() => {});
+      }
     }
     return result.ok ? { ok: true } : { ok: false, error: result.error, status: result.status };
   }
@@ -1063,6 +1115,17 @@ export async function activateTariffByPaymentId(paymentId: string): Promise<Acti
   const customBuild = parseCustomBuildMetadata(payment.metadata);
   if (customBuild) {
     const result = await createAdditionalSubscription(client.id, customBuild, { purchasedAsGift: isGiftPurchase, skipConfigCheck: true });
+    if (result.ok) {
+      await prisma.payment.update({ where: { id: payment.id }, data: { subscriptionId: result.data.subscriptionId } }).catch(() => {});
+      // Single-режим: кастом-билд, как и обычная покупка, оставляет ОДНУ подписку.
+      // Не для подарков (иначе консолидация снесла бы реальные подписки клиента).
+      if (!isGiftPurchase) {
+        const cfgMsCb = await getSystemConfig().catch(() => null);
+        if ((cfgMsCb as { multiSubscriptionsEnabled?: boolean } | null)?.multiSubscriptionsEnabled === false) {
+          await consolidateToSingleSubscription(client.id, result.data.subscriptionId).catch(() => {});
+        }
+      }
+    }
     return result.ok ? { ok: true } : { ok: false, error: result.error, status: result.status };
   }
 

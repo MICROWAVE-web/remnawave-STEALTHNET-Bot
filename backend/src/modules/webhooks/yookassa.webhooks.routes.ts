@@ -85,8 +85,8 @@ async function verifyYookassaWebhookAuth(req: { headers: Record<string, unknown>
 
   // Не настроено — legacy mode, пропускаем (но громко предупреждаем).
   if (!expectedUser || !expectedPass) {
-    console.warn("[YooKassa Webhook] BASIC AUTH NOT CONFIGURED — webhook accepted without verification. Set yookassaWebhookBasicUser / yookassaWebhookBasicPassword in admin settings.");
-    return { ok: true, reason: "no_credentials_configured" };
+    console.warn("[YooKassa Webhook] BASIC AUTH NOT CONFIGURED — REJECTING webhook. Set yookassaWebhookBasicUser / yookassaWebhookBasicPassword in admin settings.");
+    return { ok: false, reason: "no_credentials_configured" };
   }
 
   const authHeader = (req.headers["authorization"] ?? req.headers["Authorization"]) as string | undefined;

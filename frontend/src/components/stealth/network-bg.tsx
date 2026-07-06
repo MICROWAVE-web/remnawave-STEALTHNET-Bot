@@ -23,7 +23,7 @@ interface Props {
   flatten?: boolean;
 }
 
-export function NetworkBg({ accent = "#ff2357", opacity = 0.18, flatten = false }: Props) {
+export function NetworkBg({ accent = "rgb(var(--stealth-accent))", opacity = 0.18, flatten = false }: Props) {
   const patternId = useId();
   return (
     <>

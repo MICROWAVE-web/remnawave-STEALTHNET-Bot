@@ -92,30 +92,37 @@ export function AdminWebhookInboxPage() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-6">
-      <div className="mb-6 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Inbox className="h-6 w-6 text-emerald-500" />
-          <h1 className="text-2xl font-bold">Webhook inbox</h1>
+    <div className="space-y-5 px-4 sm:px-6 md:px-8 pt-6 pb-10 relative">
+      <div className="fixed -z-10 bg-primary/15 blur-[120px] top-[-50px] left-[-50px] w-[300px] h-[300px] rounded-full pointer-events-none" />
+      <div className="fixed -z-10 bg-violet-500/10 blur-[100px] top-[20%] right-[-50px] w-[250px] h-[250px] rounded-full pointer-events-none" />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between bg-background/40 backdrop-blur-3xl border border-white/10 p-6 rounded-[2rem] shadow-2xl">
+        <div className="flex items-center gap-4">
+          <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary/20 to-violet-500/20 flex items-center justify-center shadow-inner border border-white/10">
+            <Inbox className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/60">Webhook inbox</h1>
+            <p className="text-sm text-muted-foreground mt-1">Входящие вебхуки платёжных провайдеров: статус обработки и replay.</p>
+          </div>
         </div>
-        <Button onClick={() => load(true)} variant="outline" size="sm" disabled={loading} className="gap-1.5">
+        <Button onClick={() => load(true)} variant="outline" size="sm" disabled={loading} className="gap-1.5 rounded-xl">
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           Обновить
         </Button>
       </div>
 
-      <Card className="mb-4">
+      <Card className="bg-background/60 backdrop-blur-3xl border-white/10 rounded-[2rem] shadow-xl">
         <CardContent className="p-4 grid gap-3 md:grid-cols-3">
           <div>
             <Label className="text-xs">Провайдер</Label>
-            <select value={provider} onChange={(e) => setProvider(e.target.value)} className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+            <select value={provider} onChange={(e) => setProvider(e.target.value)} className="mt-1.5 flex h-9 w-full rounded-xl border border-white/10 bg-foreground/[0.03] dark:bg-white/[0.02] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50">
               <option value="">Все</option>
               {PROVIDERS.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
           <div>
             <Label className="text-xs">Результат</Label>
-            <select value={outcome} onChange={(e) => setOutcome(e.target.value)} className="mt-1.5 flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+            <select value={outcome} onChange={(e) => setOutcome(e.target.value)} className="mt-1.5 flex h-9 w-full rounded-xl border border-white/10 bg-foreground/[0.03] dark:bg-white/[0.02] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50">
               <option value="">Все</option>
               {Object.entries(OUTCOME_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
             </select>
@@ -130,9 +137,9 @@ export function AdminWebhookInboxPage() {
         </CardContent>
       </Card>
 
-      {error ? <div className="rounded-lg border border-red-500/30 bg-red-50 dark:bg-red-950/30 p-4 text-sm text-red-700 dark:text-red-300 mb-4">{error}</div> : null}
+      {error ? <div className="rounded-2xl border border-red-500/30 bg-red-500/10 backdrop-blur-md px-4 py-3 text-sm text-red-500 dark:text-red-400">{error}</div> : null}
 
-      <Card>
+      <Card className="bg-background/60 backdrop-blur-3xl border-white/10 rounded-[2rem] shadow-xl overflow-hidden">
         <CardContent className="p-0">
           {items.length === 0 && !loading ? (
             <div className="p-8 text-center text-sm text-muted-foreground">

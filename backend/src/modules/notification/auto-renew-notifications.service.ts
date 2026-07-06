@@ -8,6 +8,12 @@
  *   - Функция достаёт enabled шаблоны нужного типа, для UPCOMING фильтрует по offsetMinutes
  *     (близко к текущему timeLeft), подставляет переменные и отправляет через TG.
  *
+ * Дедуп: cron бежит ЕЖЕМИНУТНО, поэтому каждое событие без дедупа = спам раз в минуту.
+ * Храним в `subscriptions.last_notified_key` (и `clients.last_arn_notified_key`) JSON-карту
+ * `{ "<маркер>": "<bucket>" }`, где bucket = floor(now / ttl). Раньше хранился ОДИН ключ
+ * последнего шаблона — два разных шаблона (например UPCOMING и FAILED) затирали друг друга
+ * и оба слались каждую минуту. Карта делает дедуп независимым per-шаблон.
+ *
  * Переменные в `messageText`:
  *   {tariff_name}   — имя тарифа
  *   {amount}        — сумма к списанию
@@ -40,9 +46,9 @@ export type AutoRenewNotifContext = {
   /** Текущий баланс клиента. */
   balance?: number;
   /**
-   * Уникальный ключ для дедупа (например `arn_<templateId>_<subId>`).
-   * Если задан — функция сохранит ключ в `secondary_subscriptions.last_notified_key` (для sec)
-   * и не отправит тот же шаблон повторно в течение часа.
+   * Дедуп per-шаблон: если задан — тот же шаблон не уйдёт повторно, пока не сменится
+   * bucket = floor(now / ttlMs). Ключи хранятся JSON-картой в
+   * `subscriptions.last_notified_key` (для sec) / `clients.last_arn_notified_key` (для root).
    */
   dedupKeyForSec?: { secondarySubscriptionId: string; ttlMs?: number };
   /** Аналогично dedupKeyForSec — но для root подписки (через clients.last_arn_notified_key). */
@@ -57,6 +63,60 @@ function declOf(n: number): string {
   if (last === 1) return "день";
   if (last >= 2 && last <= 4) return "дня";
   return "дней";
+}
+
+/* ─────────────── Dedup-карта ─────────────── */
+
+const DEDUP_MAP_MAX_KEYS = 16;
+
+/** Разбор хранимого значения дедупа: JSON-карта или legacy-строка `templateId:bucket`. */
+export function parseDedupMap(raw: string | null | undefined): Record<string, string> {
+  if (!raw?.trim()) return {};
+  try {
+    const o = JSON.parse(raw) as unknown;
+    if (o && typeof o === "object" && !Array.isArray(o)) {
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+        if (typeof v === "string") out[k] = v;
+      }
+      return out;
+    }
+    return {};
+  } catch {
+    // legacy формат "<templateId>:<bucket>" — конвертируем в карту.
+    const idx = raw.lastIndexOf(":");
+    if (idx > 0) return { [raw.slice(0, idx)]: raw.slice(idx + 1) };
+    return {};
+  }
+}
+
+/** Ограничить размер карты (выкидываем самые старые записи по порядку вставки). */
+function capDedupMap(map: Record<string, string>): Record<string, string> {
+  const entries = Object.entries(map);
+  if (entries.length <= DEDUP_MAP_MAX_KEYS) return map;
+  return Object.fromEntries(entries.slice(entries.length - DEDUP_MAP_MAX_KEYS));
+}
+
+/**
+ * Ad-hoc дедуп-маркер по подписке (для не-шаблонных событий: попытка YK-списания,
+ * hardcoded-уведомление об отказе карты и т.п.).
+ * Возвращает true если маркер ещё не ставился в текущем bucket (действие разрешено),
+ * false — если уже было (пропустить). Маркер записывается сразу же (mark-then-act).
+ */
+export async function tryMarkSubDedup(subscriptionId: string, marker: string, ttlMs: number): Promise<boolean> {
+  const bucket = String(Math.floor(Date.now() / ttlMs));
+  const sec = await prisma.subscription.findUnique({
+    where: { id: subscriptionId },
+    select: { lastNotifiedKey: true },
+  }).catch(() => null);
+  const map = parseDedupMap(sec?.lastNotifiedKey);
+  if (map[marker] === bucket) return false;
+  map[marker] = bucket;
+  await prisma.subscription.update({
+    where: { id: subscriptionId },
+    data: { lastNotifiedKey: JSON.stringify(capDedupMap(map)) },
+  }).catch(() => {});
+  return true;
 }
 
 function renderTemplate(template: string, ctx: AutoRenewNotifContext): string {
@@ -101,7 +161,6 @@ export async function dispatchAutoRenewNotification(
   if (templates.length === 0) return 0;
 
   // Для UPCOMING — фильтруем по offsetMinutes (с допуском ± половина interval cron).
-  // Cron бежит каждый час (60 минут), поэтому окно срабатывания = ±30 минут вокруг offsetMinutes.
   let matched = templates;
   if (triggerType === "UPCOMING") {
     if (context.minutesLeft == null) return 0;
@@ -127,31 +186,26 @@ export async function dispatchAutoRenewNotification(
 
   let sentCount = 0;
   for (const t of matched) {
-    // Дедуп для secondary: не отправляем тот же шаблон повторно в течение ttl.
+    // Дедуп per-шаблон (JSON-карта). Ключ карты = id шаблона, значение = текущий bucket.
     if (context.dedupKeyForSec?.secondarySubscriptionId) {
-      const expectedKey = `${t.id}:${Math.floor(Date.now() / (context.dedupKeyForSec.ttlMs ?? 60 * 60 * 1000))}`;
-      const sec = await prisma.subscription.findUnique({
-        where: { id: context.dedupKeyForSec.secondarySubscriptionId },
-        select: { lastNotifiedKey: true },
-      });
-      if (sec?.lastNotifiedKey === expectedKey) continue;
-      // Помечаем перед отправкой (atomic-ish — двойная отправка маловероятна).
-      await prisma.subscription.update({
-        where: { id: context.dedupKeyForSec.secondarySubscriptionId },
-        data: { lastNotifiedKey: expectedKey },
-      }).catch(() => {});
+      const ttl = context.dedupKeyForSec.ttlMs ?? 60 * 60 * 1000;
+      const allowed = await tryMarkSubDedup(context.dedupKeyForSec.secondarySubscriptionId, t.id, ttl);
+      if (!allowed) continue;
     }
-    // Дедуп для root — через clients.lastArnNotifiedKey.
+    // Дедуп для root — та же карта, но в clients.lastArnNotifiedKey.
     if (context.dedupKeyForRoot?.clientId) {
-      const expectedKey = `${t.id}:${Math.floor(Date.now() / (context.dedupKeyForRoot.ttlMs ?? 60 * 60 * 1000))}`;
+      const ttl = context.dedupKeyForRoot.ttlMs ?? 60 * 60 * 1000;
+      const bucket = String(Math.floor(Date.now() / ttl));
       const cli = await prisma.client.findUnique({
         where: { id: context.dedupKeyForRoot.clientId },
         select: { lastArnNotifiedKey: true },
-      });
-      if (cli?.lastArnNotifiedKey === expectedKey) continue;
+      }).catch(() => null);
+      const map = parseDedupMap(cli?.lastArnNotifiedKey);
+      if (map[t.id] === bucket) continue;
+      map[t.id] = bucket;
       await prisma.client.update({
         where: { id: context.dedupKeyForRoot.clientId },
-        data: { lastArnNotifiedKey: expectedKey },
+        data: { lastArnNotifiedKey: JSON.stringify(capDedupMap(map)) },
       }).catch(() => {});
     }
 

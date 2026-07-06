@@ -93,7 +93,7 @@ export function StealthNewTicketModal({ open, onClose, onCreated }: Props) {
             value={subject}
             onChange={(e) => setSubject(e.target.value.slice(0, MAX_SUBJECT))}
             placeholder="Кратко опишите проблему"
-            className="w-full rounded-2xl bg-zinc-950/60 border border-white/[0.08] px-4 py-3 text-sm placeholder-zinc-500 outline-none focus:border-rose-500/40 transition"
+            className="w-full rounded-2xl bg-zinc-950/60 border border-white/[0.08] px-4 py-3 text-sm placeholder-zinc-500 outline-none focus:border-saccent-500/40 transition"
           />
         </div>
 
@@ -105,7 +105,7 @@ export function StealthNewTicketModal({ open, onClose, onCreated }: Props) {
             onChange={(e) => setBody(e.target.value.slice(0, MAX_BODY))}
             placeholder="Опишите вашу проблему или вопрос подробно…"
             rows={6}
-            className="w-full rounded-2xl bg-zinc-950/60 border border-white/[0.08] px-4 py-3 text-sm placeholder-zinc-500 outline-none focus:border-rose-500/40 transition resize-none"
+            className="w-full rounded-2xl bg-zinc-950/60 border border-white/[0.08] px-4 py-3 text-sm placeholder-zinc-500 outline-none focus:border-saccent-500/40 transition resize-none"
             autoFocus
           />
           <p className="text-[10px] text-zinc-600 text-right tabular-nums">
@@ -142,9 +142,9 @@ export function StealthNewTicketModal({ open, onClose, onCreated }: Props) {
                   <p className="text-[9px] text-zinc-500 truncate w-full">{f.name}</p>
                   <button
                     onClick={() => removeFile(idx)}
-                    className="absolute top-1 right-1 h-5 w-5 rounded-full bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 flex items-center justify-center transition"
+                    className="absolute top-1 right-1 h-5 w-5 rounded-full bg-saccent-500/20 hover:bg-saccent-500/30 border border-saccent-500/40 flex items-center justify-center transition"
                   >
-                    <X className="h-3 w-3 text-rose-400" />
+                    <X className="h-3 w-3 text-saccent-400" />
                   </button>
                 </div>
               ))}
@@ -153,9 +153,9 @@ export function StealthNewTicketModal({ open, onClose, onCreated }: Props) {
         </div>
 
         {err && (
-          <div className="rounded-xl bg-rose-500/10 border border-rose-500/30 p-3 flex items-start gap-2 text-xs">
-            <AlertCircle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
-            <span className="text-rose-200">{err}</span>
+          <div className="rounded-xl bg-saccent-500/10 border border-saccent-500/30 p-3 flex items-start gap-2 text-xs">
+            <AlertCircle className="h-4 w-4 text-saccent-400 shrink-0 mt-0.5" />
+            <span className="text-saccent-200">{err}</span>
           </div>
         )}
 

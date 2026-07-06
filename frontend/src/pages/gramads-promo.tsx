@@ -254,16 +254,18 @@ export function GramadsPromoPage() {
   }
 
   return (
-    <div className="space-y-6 p-4">
+    <div className="space-y-5 px-4 sm:px-6 md:px-8 pt-6 pb-10 relative">
+      <div className="fixed -z-10 bg-primary/15 blur-[120px] top-[-50px] left-[-50px] w-[300px] h-[300px] rounded-full pointer-events-none" />
+      <div className="fixed -z-10 bg-violet-500/10 blur-[100px] top-[20%] right-[-50px] w-[250px] h-[250px] rounded-full pointer-events-none" />
       {/* Заголовок */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-primary/10">
+      <div className="flex items-center justify-between flex-wrap gap-3 bg-background/40 backdrop-blur-3xl border border-white/10 p-6 rounded-[2rem] shadow-2xl">
+        <div className="flex items-center gap-4">
+          <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary/20 to-violet-500/20 flex items-center justify-center shadow-inner border border-white/10">
             <Megaphone className="h-6 w-6 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">{t("admin.gramads.title")}</h1>
-            <p className="text-sm text-muted-foreground">{t("admin.gramads.subtitle")}</p>
+            <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/60">{t("admin.gramads.title")}</h1>
+            <p className="text-sm text-muted-foreground mt-1">{t("admin.gramads.subtitle")}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">

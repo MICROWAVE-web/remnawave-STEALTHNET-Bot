@@ -185,7 +185,7 @@ export function StealthProfile() {
             {sec.items.map((it) => {
               const Icon = it.icon;
               const glowStyle = it.glow ? {
-                rose: "ring-1 ring-rose-500/40 shadow-[inset_0_0_20px_rgba(255,35,87,0.07)]",
+                rose: "ring-1 ring-saccent-500/40 shadow-[inset_0_0_20px_rgb(var(--stealth-accent)_/_0.07)]",
                 emerald: "ring-1 ring-emerald-500/40 shadow-[inset_0_0_20px_rgba(16,185,129,0.07)]",
                 violet: "ring-1 ring-violet-500/40 shadow-[inset_0_0_20px_rgba(167,139,250,0.07)]",
                 amber: "ring-1 ring-amber-500/40 shadow-[inset_0_0_20px_rgba(251,191,36,0.07)]",
@@ -206,11 +206,11 @@ export function StealthProfile() {
                 >
                   <div className={cn(
                     "h-9 w-9 rounded-lg border flex items-center justify-center shrink-0",
-                    it.danger ? "bg-rose-500/15 border-rose-500/30" : "bg-zinc-800/60 border-white/10",
+                    it.danger ? "bg-saccent-500/15 border-saccent-500/30" : "bg-zinc-800/60 border-white/10",
                   )}>
-                    <Icon className={cn("h-4 w-4", it.danger ? "text-rose-400" : "text-zinc-300")} />
+                    <Icon className={cn("h-4 w-4", it.danger ? "text-saccent-400" : "text-zinc-300")} />
                   </div>
-                  <span className={cn("flex-1 text-sm font-medium truncate", it.danger && "text-rose-400")}>{it.label}</span>
+                  <span className={cn("flex-1 text-sm font-medium truncate", it.danger && "text-saccent-400")}>{it.label}</span>
                   {it.rightLabel && <span className="text-xs text-zinc-500 shrink-0">{it.rightLabel}</span>}
                   <ChevronRight className="h-4 w-4 text-zinc-500 shrink-0" />
                 </button>

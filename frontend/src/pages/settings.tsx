@@ -100,6 +100,8 @@ const DEFAULT_BOT_MENU_TEXTS: Record<string, string> = {
   trafficPrefix: "📈 Трафик — ",
   linkLabel: "🔗 Ссылка подключения:",
   chooseAction: "Выберите действие:",
+  subsCountLabel: "🔢 Подписок: ",
+  subLineFormat: "{{SUB_STATUS}} {{SUB_TYPE}} Подписка #{{SUB_NUM}} — **{{SUB_DAYS}}** до {{SUB_DATE}}{{SUB_TRAFFIC}}",
 };
 
 const DEFAULT_BOT_TARIFFS_TEXT = "Тарифы\n\n{{CATEGORY}}\n{{TARIFFS}}\n\nВыберите тариф для оплаты:";
@@ -180,6 +182,8 @@ const BOT_MENU_TEXT_LABELS: Record<string, string> = {
   trafficPrefix: "Подпись трафика",
   linkLabel: "Подпись ссылки подключения",
   chooseAction: "Призыв к действию",
+  subsCountLabel: "Мульти: счётчик подписок (🔢 Подписок: N)",
+  subLineFormat: "Мульти: формат строки подписки — плейсхолдеры {{SUB_STATUS}} {{SUB_TYPE}} {{SUB_NUM}} {{SUB_DAYS}} {{SUB_DATE}} {{SUB_TRAFFIC}}",
 };
 
 /** Человеко-читаемые описания emoji-ключей для админки (вместо технических HEADER, BALANCE и т.п.). */
@@ -774,7 +778,14 @@ export function SettingsPage() {
         smtpPassword: settings.smtpPassword && settings.smtpPassword !== "********" ? settings.smtpPassword : undefined,
         smtpFromEmail: settings.smtpFromEmail ?? null,
         smtpFromName: settings.smtpFromName ?? null,
+        mailProvider: settings.mailProvider ?? undefined,
+        resendApiKey: settings.resendApiKey ?? undefined,
+        resendFromEmail: settings.resendFromEmail || null,
+        passwordResetEnabled: settings.passwordResetEnabled ?? false,
         skipEmailVerification: settings.skipEmailVerification ?? false,
+        onboardingEmailRequired: settings.onboardingEmailRequired ?? false,
+        stealthAccent: settings.stealthAccent ?? null,
+        stealthHeroImage: settings.stealthHeroImage ?? null,
         // Антибот-защита регистраций
         signupProtectionEnabled: settings.signupProtectionEnabled !== false,
         emailDomainBlocklist: settings.emailDomainBlocklist ?? "",
@@ -899,6 +910,7 @@ export function SettingsPage() {
         giftSubscriptionsEnabled: settings.giftSubscriptionsEnabled ?? false,
         giftCodeExpiryHours: settings.giftCodeExpiryHours ?? 72,
         maxAdditionalSubscriptions: settings.maxAdditionalSubscriptions ?? 5,
+        multiSubscriptionsEnabled: settings.multiSubscriptionsEnabled ?? true,
         giftCodeFormatLength: settings.giftCodeFormatLength ?? 12,
         giftRateLimitPerMinute: settings.giftRateLimitPerMinute ?? 5,
         giftExpiryNotificationDays: settings.giftExpiryNotificationDays ?? 3,
@@ -1446,6 +1458,50 @@ export function SettingsPage() {
                     </div>
                   )}
                   <p className="text-xs text-muted-foreground">{t("admin.settings.bot_logo_hint")}</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Мини-апп (Stealth): акцентный цвет</Label>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <input
+                      type="color"
+                      value={settings.stealthAccent || "#ff2357"}
+                      onChange={(e) => setSettings((s) => (s ? { ...s, stealthAccent: e.target.value } : s))}
+                      className="h-10 w-14 rounded border border-input bg-background cursor-pointer p-1"
+                    />
+                    <Input
+                      value={settings.stealthAccent ?? ""}
+                      onChange={(e) => setSettings((s) => (s ? { ...s, stealthAccent: e.target.value || null } : s))}
+                      placeholder="#ff2357"
+                      className="font-mono w-40"
+                    />
+                    {settings.stealthAccent && (
+                      <Button type="button" variant="outline" size="sm" onClick={() => setSettings((s) => (s ? { ...s, stealthAccent: null } : s))}>Сброс</Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Перекрашивает весь новый мини-апп (щит, кнопки, активные вкладки, акценты). Пусто = стандартный красный.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Мини-апп (Stealth): картинка вместо щита</Label>
+                  {settings.stealthHeroImage ? (
+                    <div className="flex items-center gap-3">
+                      <img src={settings.stealthHeroImage} alt="hero" className="h-14 w-14 object-contain rounded border bg-black/40 p-1" />
+                      <div className="flex gap-2">
+                        <Label className="cursor-pointer">
+                          <span className="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground h-9 px-4">{t("admin.settings.upload_another")}</span>
+                          <input type="file" accept="image/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setSettings((s) => (s ? { ...s, stealthHeroImage: r.result as string } : s)); r.readAsDataURL(f); }} />
+                        </Label>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setSettings((s) => (s ? { ...s, stealthHeroImage: null } : s))}>{t("admin.settings.delete")}</Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <Label className="cursor-pointer">
+                        <span className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background h-9 px-4 hover:bg-accent">Загрузить картинку</span>
+                        <input type="file" accept="image/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setSettings((s) => (s ? { ...s, stealthHeroImage: r.result as string } : s)); r.readAsDataURL(f); }} />
+                      </Label>
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">PNG/SVG с прозрачным фоном. Заменяет иконку-щит в шапке мини-аппа. Пусто = стандартный щит.</p>
                 </div>
                 <div className="space-y-2">
                   <Label>{t("admin.settings.favicon")}</Label>
@@ -3940,6 +3996,46 @@ export function SettingsPage() {
                   </div>
                 </div>
 
+                {/* ───── Провайдер отправки писем (SMTP / Resend) ───── */}
+                <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/5 via-teal-500/5 to-cyan-500/5 p-5 space-y-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-8 w-8 rounded-xl bg-emerald-500/20 flex items-center justify-center"><Mail className="h-4 w-4 text-emerald-500" /></div>
+                    <h3 className="text-base font-semibold">Провайдер отправки писем</h3>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Чем отправлять письма регистрации, подтверждения почты и восстановления пароля: классический SMTP-сервер или Resend API (проще — только API-ключ и верифицированный домен).</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button type="button" onClick={() => setSettings((s) => (s ? { ...s, mailProvider: "smtp" } : s))}
+                      className={`rounded-xl border p-3 text-sm font-medium transition ${(settings.mailProvider ?? "smtp") !== "resend" ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-300" : "border-white/10 bg-card/40 text-muted-foreground hover:border-white/20"}`}>
+                      SMTP-сервер
+                    </button>
+                    <button type="button" onClick={() => setSettings((s) => (s ? { ...s, mailProvider: "resend" } : s))}
+                      className={`rounded-xl border p-3 text-sm font-medium transition ${settings.mailProvider === "resend" ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-300" : "border-white/10 bg-card/40 text-muted-foreground hover:border-white/20"}`}>
+                      Resend API
+                    </button>
+                  </div>
+                  {settings.mailProvider === "resend" && (
+                    <div className="space-y-4 pt-1">
+                      <div className="space-y-2">
+                        <Label>Resend API-ключ</Label>
+                        <Input type="password" value={settings.resendApiKey ?? ""} onChange={(e) => setSettings((s) => (s ? { ...s, resendApiKey: e.target.value || null } : s))} placeholder="re_..." />
+                        <p className="text-[11px] text-muted-foreground">Панель Resend → API Keys. Домен отправителя должен быть верифицирован в Resend.</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Resend: адрес отправителя (From)</Label>
+                        <Input type="email" value={settings.resendFromEmail ?? ""} onChange={(e) => setSettings((s) => (s ? { ...s, resendFromEmail: e.target.value || null } : s))} placeholder="noreply@yourdomain.com" />
+                        <p className="text-[11px] text-muted-foreground">На верифицированном в Resend домене. Имя отправителя — из поля «Имя отправителя» ниже. Если пусто — берётся SMTP From-email.</p>
+                      </div>
+                    </div>
+                  )}
+                  <label className="flex items-center gap-3 p-3.5 rounded-xl bg-card/40 border border-white/5 cursor-pointer">
+                    <input type="checkbox" checked={settings.passwordResetEnabled ?? false} onChange={(e) => setSettings((s) => (s ? { ...s, passwordResetEnabled: e.target.checked } : s))} className="rounded border w-4 h-4" />
+                    <div className="flex-1">
+                      <span className="text-sm font-medium">Восстановление пароля по email</span>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">Показывает ссылку «Забыли пароль?» на входе в кабинет и включает отправку письма для сброса. Нужен настроенный провайдер почты выше.</p>
+                    </div>
+                  </label>
+                </div>
+
                 <div className="rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/5 via-teal-500/5 to-sky-500/5 p-5 space-y-4">
                   <div className="flex items-center gap-2.5">
                     <div className="h-8 w-8 rounded-xl bg-cyan-500/20 flex items-center justify-center"><Mail className="h-4 w-4 text-cyan-500" /></div>
@@ -3957,6 +4053,19 @@ export function SettingsPage() {
                   <div className="flex-1">
                     <span className="text-sm font-medium">{t("admin.settings.skip_email")}</span>
                     <p className="text-[11px] text-muted-foreground mt-0.5">{t("admin.settings.smtp_no_confirm_hint")}</p>
+                  </div>
+                </label>
+                <label className="flex items-center gap-3 p-3.5 rounded-xl bg-card/40 border border-white/5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    id="onboardingEmailRequired"
+                    checked={settings.onboardingEmailRequired ?? false}
+                    onChange={(e) => setSettings((s) => (s ? { ...s, onboardingEmailRequired: e.target.checked } : s))}
+                    className="rounded border w-4 h-4"
+                  />
+                  <div className="flex-1">
+                    <span className="text-sm font-medium">Обязательная привязка email при онбординге</span>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">Если выключено — в мини-аппе на шаге «Привяжите email» появляется кнопка «Пропустить». Если включено — email обязателен.</p>
                   </div>
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -5139,6 +5248,23 @@ export function SettingsPage() {
               </div>
             </div>
             <CardContent className="space-y-6 p-4 sm:p-6">
+              <div className="flex items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+                <Switch
+                  id="multi-subscriptions-enabled"
+                  checked={settings.multiSubscriptionsEnabled ?? true}
+                  onCheckedChange={(checked: boolean) =>
+                    setSettings((s) => (s ? { ...s, multiSubscriptionsEnabled: checked === true } : s))
+                  }
+                />
+                <div>
+                  <Label htmlFor="multi-subscriptions-enabled" className="text-base font-medium cursor-pointer">
+                    Мульти-подписки
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Вкл (по умолчанию): у клиента может быть несколько подписок одновременно. Выкл: одна подписка — при покупке другого тарифа старая заменяется новой (остаток дней сгорает, VPN-ссылка сохраняется), клиенту показывается предупреждение.
+                  </p>
+                </div>
+              </div>
               <div className="flex items-center gap-3">
                 <Switch
                   id="gift-subscriptions-enabled"

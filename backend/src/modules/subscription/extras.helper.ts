@@ -69,10 +69,10 @@ export async function removeAllExtraDevicesForSub(subId: string): Promise<Remove
     select: { id: true, remnawaveUuid: true, tariffId: true, extraDevices: true },
   });
   if (!sub) {
-    return { ok: false, extraDevicesRemoved: 0, hwidKicked: 0, newDeviceLimit: 0, error: "subscription not found" };
+    return { ok: false, extraDevicesRemoved: 0, hwidKicked: 0, newDeviceLimit: 0, error: "подписка не найдена" };
   }
   if (!sub.remnawaveUuid) {
-    return { ok: false, extraDevicesRemoved: 0, hwidKicked: 0, newDeviceLimit: 0, error: "not linked to remna" };
+    return { ok: false, extraDevicesRemoved: 0, hwidKicked: 0, newDeviceLimit: 0, error: "подписка не привязана к панели" };
   }
   if ((sub.extraDevices ?? 0) === 0) {
     // Уже нет extras — ничего не делаем.
@@ -136,8 +136,8 @@ export async function applyDevicesToSubscription(subId: string, deviceCount: num
     where: { id: subId },
     select: { id: true, remnawaveUuid: true },
   });
-  if (!sub) return { ok: false, newDeviceLimit: 0, error: "subscription not found" };
-  if (!sub.remnawaveUuid) return { ok: false, newDeviceLimit: 0, error: "not linked to remna" };
+  if (!sub) return { ok: false, newDeviceLimit: 0, error: "подписка не найдена" };
+  if (!sub.remnawaveUuid) return { ok: false, newDeviceLimit: 0, error: "подписка не привязана к панели" };
 
   const userRes = await remnaGetUser(sub.remnawaveUuid);
   if (userRes.error) return { ok: false, newDeviceLimit: 0, error: userRes.error };

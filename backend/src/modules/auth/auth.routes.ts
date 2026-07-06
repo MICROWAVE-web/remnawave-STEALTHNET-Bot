@@ -25,24 +25,24 @@ authRouter.post("/login", async (req, res) => {
   try {
     const body = loginSchema.safeParse(req.body);
     if (!body.success) {
-      return res.status(400).json({ message: "Invalid input", errors: body.error.flatten() });
+      return res.status(400).json({ message: "Проверьте введённые данные", errors: body.error.flatten() });
     }
 
     const admin = await prisma.admin.findUnique({ where: { email: body.data.email } });
     if (!admin) {
-      return res.status(401).json({ message: "Invalid email or password" });
+      return res.status(401).json({ message: "Неверный email или пароль" });
     }
 
     const valid = await verifyPassword(body.data.password, admin.passwordHash);
     if (!valid) {
-      return res.status(401).json({ message: "Invalid email or password" });
+      return res.status(401).json({ message: "Неверный email или пароль" });
     }
 
     const full = await prisma.admin.findUnique({
       where: { id: admin.id },
       select: { id: true, email: true, mustChangePassword: true, role: true, allowedSections: true, totpEnabled: true },
     });
-    if (!full) return res.status(401).json({ message: "Invalid email or password" });
+    if (!full) return res.status(401).json({ message: "Неверный email или пароль" });
 
     if (full.totpEnabled) {
       const tempToken = signAdmin2FAPendingToken({ adminId: full.id, email: full.email }, env.JWT_SECRET);
@@ -83,7 +83,7 @@ authRouter.post("/login", async (req, res) => {
   } catch (e) {
     console.error("Login error:", e);
     const msg = e instanceof Error ? e.message : String(e);
-    return res.status(500).json({ message: "Internal server error", error: msg });
+    return res.status(500).json({ message: "Внутренняя ошибка сервера", error: msg });
   }
 });
 
@@ -118,7 +118,7 @@ const twoFaCodeSchema = z.object({ code: z.string().length(6, "Код 6 цифр
 authRouter.post("/2fa/setup", requireAuth, async (req, res) => {
   const adminId = (req as unknown as { adminId?: string }).adminId!;
   const admin = await prisma.admin.findUnique({ where: { id: adminId }, select: { id: true, email: true, totpEnabled: true } });
-  if (!admin) return res.status(401).json({ message: "Unauthorized" });
+  if (!admin) return res.status(401).json({ message: "Требуется авторизация" });
   if (admin.totpEnabled) return res.status(400).json({ message: "2FA уже включена" });
   const secret = generateSecret();
   const otpauthUrl = generateURI({ issuer: "STEALTHNET Admin", label: admin.email, secret });
@@ -153,12 +153,12 @@ const refreshSchema = z.object({ refreshToken: z.string().min(1) });
 authRouter.post("/refresh", async (req, res) => {
   const body = refreshSchema.safeParse(req.body);
   if (!body.success) {
-    return res.status(400).json({ message: "Invalid input" });
+    return res.status(400).json({ message: "Проверьте введённые данные" });
   }
 
   const payload = verifyToken(body.data.refreshToken, env.JWT_SECRET);
   if (!payload || payload.type !== "refresh") {
-    return res.status(401).json({ message: "Invalid or expired refresh token" });
+    return res.status(401).json({ message: "Сессия истекла — войдите заново" });
   }
 
   const stored = await prisma.refreshToken.findUnique({
@@ -167,7 +167,7 @@ authRouter.post("/refresh", async (req, res) => {
   });
   if (!stored || stored.expiresAt < new Date()) {
     if (stored) await prisma.refreshToken.delete({ where: { id: stored.id } }).catch(() => {});
-    return res.status(401).json({ message: "Invalid or expired refresh token" });
+    return res.status(401).json({ message: "Сессия истекла — войдите заново" });
   }
 
   const accessToken = signAccessToken(
@@ -211,17 +211,17 @@ authRouter.post("/change-password", requireAuth, async (req, res) => {
 
   const body = changePasswordSchema.safeParse(req.body);
   if (!body.success) {
-    return res.status(400).json({ message: "Invalid input", errors: body.error.flatten() });
+    return res.status(400).json({ message: "Проверьте введённые данные", errors: body.error.flatten() });
   }
 
   const admin = await prisma.admin.findUnique({ where: { id: adminId } });
   if (!admin) {
-    return res.status(401).json({ message: "Unauthorized" });
+    return res.status(401).json({ message: "Требуется авторизация" });
   }
 
   const valid = await verifyPassword(body.data.currentPassword, admin.passwordHash);
   if (!valid) {
-    return res.status(400).json({ message: "Current password is incorrect" });
+    return res.status(400).json({ message: "Текущий пароль неверен" });
   }
 
   const passwordHash = await hashPassword(body.data.newPassword);
@@ -234,7 +234,7 @@ authRouter.post("/change-password", requireAuth, async (req, res) => {
   const allowedSections = parseAllowedSections(updated.allowedSections);
   return res.json({
     success: true,
-    message: "Password changed",
+    message: "Пароль изменён",
     admin: {
       id: updated.id,
       email: updated.email,
