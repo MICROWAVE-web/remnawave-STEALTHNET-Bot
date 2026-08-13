@@ -22,6 +22,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   BarChart3,
+  Timer,
 } from "lucide-react";
 import {
   AreaChart,
@@ -99,6 +100,7 @@ interface AnalyticsData {
     siteClients: number;
     bothClients: number;
     trialUsedCount: number;
+    activeTrialClients: number;
     trialToPaid: number;
     trialConversionRate: number;
     avgCheck: number;
@@ -230,10 +232,11 @@ export function AnalyticsPage() {
       {/* Триалы */}
       <section>
         <SectionHeader icon={Zap} title="Триалы" subtitle="Пробный период и конверсия" />
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           <MetricCard index={14} icon={Zap} label="Всего триалов" value={fmt(s.trialUsedCount)} sub="активаций" color="yellow" />
+          <MetricCard index={15} icon={Timer} label="С активным триалом" value={fmt(s.activeTrialClients ?? 0)} sub="человек сейчас" color="amber" />
           <MetricCard
-            index={15}
+            index={16}
             icon={s.trialConversionRate > 20 ? ArrowUpRight : ArrowDownRight}
             label="Конверсия триал → покупка"
             value={`${s.trialConversionRate}%`}

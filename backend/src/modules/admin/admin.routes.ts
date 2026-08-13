@@ -5318,7 +5318,7 @@ adminRouter.get("/analytics", async (_req, res) => {
 
   // ─── Сводка (доход и кол-во платежей — только внешние поступления, без оплаты с баланса) ───
   const [totalClients, activeClients, totalRevenueAgg, totalPayments, referralCreditsSum,
-    clientsNew24h, clientsNew7d, clientsNew30d, paymentsPending] = await Promise.all([
+    clientsNew24h, clientsNew7d, clientsNew30d, paymentsPending, activeTrialOwnerRows] = await Promise.all([
     prisma.client.count(),
     prisma.client.count({ where: { remnawaveUuid: { not: null } } }),
     prisma.payment.aggregate({ where: PAID_EXTERNAL_WHERE, _sum: { amount: true } }),
@@ -5328,7 +5328,18 @@ adminRouter.get("/analytics", async (_req, res) => {
     prisma.client.count({ where: { createdAt: { gte: day7Ago } } }),
     prisma.client.count({ where: { createdAt: { gte: day30Ago } } }),
     prisma.payment.count({ where: { status: "PENDING" } }),
+    // Уникальные клиенты с действующей триальной подпиской (expireAt в будущем).
+    prisma.subscription.findMany({
+      where: {
+        trialId: { not: null },
+        expireAt: { gt: now },
+        purchasedAsGift: false,
+      },
+      distinct: ["ownerId"],
+      select: { ownerId: true },
+    }),
   ]);
+  const activeTrialClients = activeTrialOwnerRows.length;
 
   const totalRevenue = totalRevenueAgg._sum.amount ?? 0;
   const avgCheck = totalPayments > 0 ? Math.round((totalRevenue / totalPayments) * 100) / 100 : 0;
@@ -5381,6 +5392,7 @@ adminRouter.get("/analytics", async (_req, res) => {
       siteClients,
       bothClients,
       trialUsedCount,
+      activeTrialClients,
       trialToPaid,
       trialConversionRate,
       avgCheck,
