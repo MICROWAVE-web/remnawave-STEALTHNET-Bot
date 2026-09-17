@@ -7,7 +7,7 @@
 import "dotenv/config";
 import { Bot, Composer, Context, InputFile } from "grammy";
 import type { Api } from "grammy";
-import { ProxyAgent as UndiciProxyAgent } from "undici";
+import { HttpsProxyAgent } from "https-proxy-agent";
 import { SocksProxyAgent } from "socks-proxy-agent";
 import * as api from "./api.js";
 import {
@@ -112,10 +112,12 @@ async function createBotWithProxy(token: string): Promise<Bot> {
     if (cfg?.proxyEnabled && cfg?.proxyTelegram && cfg?.proxyUrl?.trim()) {
       const url = cfg.proxyUrl.trim();
       const lower = url.toLowerCase();
+      // grammy на Node использует node-fetch → нужен `agent`, не undici `dispatcher`
       if (lower.startsWith("http://") || lower.startsWith("https://")) {
         console.log("[Proxy] Telegram Bot API через HTTP прокси");
+        const agent = new HttpsProxyAgent(url);
         return new Bot(token, {
-          client: { baseFetchConfig: { dispatcher: new UndiciProxyAgent(url) } as any },
+          client: { baseFetchConfig: { agent } as any },
         });
       }
       if (lower.startsWith("socks5://") || lower.startsWith("socks4://") || lower.startsWith("socks://")) {
@@ -425,7 +427,7 @@ const selectedGiftOption = new Map<number, { tariffId: string; option: TariffPri
 /** Кэш priceOptions для подарков — для разрешения индекса из callback. */
 const giftOptionsCache = new Map<number, { tariffId: string; options: TariffPriceOption[] }>();
 
-// Токены по telegram_id (в памяти; автоматическая переавторизация при потере)
+// Токены по telegram_id (в памяти; автоматическая переавторизация при потере/истечении)
 const tokenStore = new Map<number, string>();
 
 function getToken(userId: number): string | undefined {
@@ -436,13 +438,32 @@ function setToken(userId: number, token: string): void {
   tokenStore.set(userId, token);
 }
 
+function clearToken(userId: number): void {
+  tokenStore.delete(userId);
+}
+
+/** JWT просрочен или битый (без проверки подписи — только exp). */
+function isJwtExpired(token: string, skewSeconds = 60): boolean {
+  try {
+    const part = token.split(".")[1];
+    if (!part) return true;
+    const json = Buffer.from(part.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    const payload = JSON.parse(json) as { exp?: number };
+    if (typeof payload.exp !== "number") return true;
+    return payload.exp * 1000 <= Date.now() + skewSeconds * 1000;
+  } catch {
+    return true;
+  }
+}
+
 /**
- * Получить токен пользователя. Если токен отсутствует (рестарт бота, протух и т.д.),
+ * Получить токен пользователя. Если токен отсутствует, протух или force=true —
  * автоматически переавторизует через registerByTelegram и возвращает свежий токен.
  */
-async function getOrRestoreToken(userId: number, username?: string): Promise<string | null> {
+async function getOrRestoreToken(userId: number, username?: string, force = false): Promise<string | null> {
   const existing = tokenStore.get(userId);
-  if (existing) return existing;
+  if (existing && !force && !isJwtExpired(existing)) return existing;
+  if (existing) tokenStore.delete(userId);
   try {
     const config = await api.getPublicConfig();
     if (config?.translations) setTranslations(config.translations);
@@ -458,6 +479,12 @@ async function getOrRestoreToken(userId: number, username?: string): Promise<str
   } catch {
     return null;
   }
+}
+
+/** Сообщение для юзера: не светим сырой "Invalid or expired token". */
+function userFacingError(e: unknown, fallback = "Ошибка"): string {
+  if (api.isAuthError(e)) return "Сессия истекла. Нажмите /start и повторите действие.";
+  return e instanceof Error ? e.message : fallback;
 }
 
 // Пользователи, ожидающие ввода промокода
@@ -1703,17 +1730,8 @@ composer.command("start", async (ctx) => {
       return;
     }
     try {
-      // Сначала убедимся что юзер зарегистрирован — если нет, регнём по telegramId.
-      let token = getToken(from.id);
-      if (!token) {
-        const reg = await api.registerByTelegram({
-          telegramId,
-          telegramUsername,
-          preferredLang: from.language_code ?? "ru",
-        });
-        token = reg.token;
-        if (token) tokenStore.set(from.id, token);
-      }
+      // Сначала убедимся что юзер зарегистрирован (и токен не протух).
+      const token = await getOrRestoreToken(from.id, from.username);
       if (!token) {
         await ctx.reply("❌ Не удалось получить доступ. Попробуйте позже.");
         return;
@@ -2525,7 +2543,7 @@ composer.on("callback_query:data", async (ctx) => {
 
   // ─── Приветствие → «Войти в кабинет» — открывает главное меню ───
   if (data === "welcome:continue") {
-    const token = getToken(userId);
+    const token = await getOrRestoreToken(userId, ctx.from?.username);
     if (!token) {
       await ctx.reply("Сессия истекла. Отправьте /start ещё раз.");
       return;
@@ -4606,12 +4624,12 @@ composer.on("callback_query:data", async (ctx) => {
         }
         extraOptionPending.set(userId, { kind, productId });
 
-        // рассчитываем актуальную цену
-        // для каждой подписки с объяснением (коэф по остатку дней + личная скидка).
+        // Цена: трафик/серверы — фиксированная (как на бэке), устройства — pro-rata по остатку дней.
         const product = (config?.sellOptions ?? []).find((o) => o.kind === kind && o.id === productId);
         const basePrice = product?.price ?? 0;
         const me = await api.getMe(token).catch(() => null);
         const personalDiscount = me?.personalDiscountPercent ?? 0;
+        const useProrata = kind === "devices";
         const computeForSub = (s: { subscription?: unknown }) => {
           const inner = s.subscription as Record<string, unknown> | null;
           const innerData = inner
@@ -4625,7 +4643,7 @@ composer.on("callback_query:data", async (ctx) => {
               daysLeft = Math.max(0, (exp.getTime() - Date.now()) / 86_400_000);
             }
           }
-          const coef = Math.max(1, daysLeft / 30);
+          const coef = useProrata ? Math.max(1, daysLeft / 30) : 1;
           // округление ВНИЗ до целых рублей — 230.87 → 230.
           // Эта же цена идёт в бэк (Math.floor там же) — юзер платит ровно сколько видит.
           const rawPrice = Math.floor(basePrice * coef);
@@ -4646,11 +4664,22 @@ composer.on("callback_query:data", async (ctx) => {
             "",
             `📲 Подписка: #${only.subscriptionIndex ?? 0}${only.tariffDisplayName ? ` (${only.tariffDisplayName})` : ""}`,
             "",
-            `🗓️ Базовая цена: ${basePrice} ₽ за 30 дней`,
-            `⏰ Осталось дней: ${calc.daysLeft}`,
-            `📐 Коэффициент: ×${calc.coef} (дней / 30)`,
-            `💰 Цена за период: ${calc.rawPrice} ₽`,
           ];
+          if (useProrata) {
+            lines.push(
+              `🗓️ Базовая цена: ${basePrice} ₽ за 30 дней`,
+              `⏰ Осталось дней: ${calc.daysLeft}`,
+              `📐 Коэффициент: ×${calc.coef} (дней / 30)`,
+              `💰 Цена за период: ${calc.rawPrice} ₽`,
+            );
+          } else {
+            lines.push(
+              `💰 Цена: ${basePrice} ₽`,
+              kind === "traffic"
+                ? `💡 Трафик добавляется к лимиту выбранной подписки.`
+                : `💡 Опция применяется к выбранной подписке.`,
+            );
+          }
           if (personalDiscount > 0) {
             const discountAmount = Math.round((calc.rawPrice - calc.finalPrice) * 100) / 100;
             lines.push(`💎 Ваша персональная скидка: −${personalDiscount}% (−${discountAmount} ₽)`);
@@ -4669,10 +4698,14 @@ composer.on("callback_query:data", async (ctx) => {
         const titleLines = [
           `📦 К какой подписке применить опцию: ${productName}?`,
           "",
-          `🗓️ Базовая цена: ${basePrice} ₽ за 30 дней.`,
-          `📐 Стоимость зависит от оставшегося количества дней подписки.`,
-          `Цена увеличивается пропорционально оставшимся дням подписки (×N от 30 дн).`,
-          `💡 Опция «${productName}» действует до окончания выбранной подписки.`,
+          useProrata
+            ? `🗓️ Базовая цена: ${basePrice} ₽ за 30 дней.\n📐 Стоимость зависит от оставшегося количества дней подписки (×N от 30 дн).`
+            : `💰 Цена: ${basePrice} ₽ (фиксированная, без доплаты за оставшиеся дни).`,
+          useProrata
+            ? `💡 Опция «${productName}» действует до окончания выбранной подписки.`
+            : kind === "traffic"
+              ? `💡 Трафик добавляется к лимиту выбранной подписки.`
+              : `💡 Опция применяется к выбранной подписке.`,
         ];
         if (personalDiscount > 0) {
           titleLines.push(`💎 К итогу применится ваша персональная скидка −${personalDiscount}%.`);
@@ -4708,8 +4741,7 @@ composer.on("callback_query:data", async (ctx) => {
       const { kind, productId } = pending;
       if (subMarker) extraOptionTargetSub.set(userId, subMarker);
 
-      // подтверждение выбора с детальным
-      // расчётом цены (коэф по остатку дней + личная скидка).
+      // подтверждение: трафик/серверы — фикс. цена; устройства — pro-rata + скидка.
       try {
         const subs = await api.getAllSubscriptions(token);
         const target = subs.items?.find((it) => it.id === subMarker);
@@ -4717,6 +4749,7 @@ composer.on("callback_query:data", async (ctx) => {
         const basePrice = product?.price ?? 0;
         const me = await api.getMe(token).catch(() => null);
         const pd = me?.personalDiscountPercent ?? 0;
+        const useProrata = kind === "devices";
         const inner = target?.subscription as Record<string, unknown> | null;
         const innerData = inner ? ((inner.response ?? inner.data ?? inner) as Record<string, unknown>) : null;
         const expireAtRaw = innerData?.expireAt ?? innerData?.expire_at;
@@ -4725,7 +4758,7 @@ composer.on("callback_query:data", async (ctx) => {
           const exp = typeof expireAtRaw === "number" ? new Date(expireAtRaw * 1000) : new Date(expireAtRaw);
           if (!isNaN(exp.getTime())) daysLeft = Math.max(0, (exp.getTime() - Date.now()) / 86_400_000);
         }
-        const coef = Math.max(1, daysLeft / 30);
+        const coef = useProrata ? Math.max(1, daysLeft / 30) : 1;
         // округление вниз до целых рублей.
         const rawPrice = Math.floor(basePrice * coef);
         const finalPrice = pd > 0 ? Math.max(0, Math.floor(rawPrice * (1 - pd / 100))) : rawPrice;
@@ -4735,11 +4768,22 @@ composer.on("callback_query:data", async (ctx) => {
           "",
           `📲 Подписка: #${target?.subscriptionIndex ?? 0}${target?.tariffDisplayName ? ` (${target.tariffDisplayName})` : ""}`,
           "",
-          `🗓️ Базовая цена: ${basePrice} ₽ за 30 дней`,
-          `⏰ Осталось дней: ${Math.round(daysLeft)}`,
-          `📐 Коэффициент: ×${Math.round(coef * 10) / 10}`,
-          `💰 Цена за период: ${rawPrice} ₽`,
         ];
+        if (useProrata) {
+          lines.push(
+            `🗓️ Базовая цена: ${basePrice} ₽ за 30 дней`,
+            `⏰ Осталось дней: ${Math.round(daysLeft)}`,
+            `📐 Коэффициент: ×${Math.round(coef * 10) / 10}`,
+            `💰 Цена за период: ${rawPrice} ₽`,
+          );
+        } else {
+          lines.push(
+            `💰 Цена: ${basePrice} ₽`,
+            kind === "traffic"
+              ? `💡 Трафик добавляется к лимиту выбранной подписки.`
+              : `💡 Опция применяется к выбранной подписке.`,
+          );
+        }
         if (pd > 0) {
           const discountAmount = Math.round((rawPrice - finalPrice) * 100) / 100;
           lines.push(`💎 Персональная скидка: −${pd}% (−${discountAmount} ₽)`);
@@ -4881,13 +4925,12 @@ composer.on("callback_query:data", async (ctx) => {
         });
         await editMessageContent(ctx, receiptPromptText(savedEmailOp), receiptPromptKeyboard(tokRcptOp, savedEmailOp));
       } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "Ошибка создания платежа";
-        const isAuthError = /401|unauthorized|истек|авториз|токен/i.test(msg);
-        if (isAuthError) {
-          tokenStore.delete(userId);
-          const freshToken = await getOrRestoreToken(userId, ctx.from?.username);
+        const msg = userFacingError(e, "Ошибка создания платежа");
+        if (api.isAuthError(e)) {
+          clearToken(userId);
+          const freshToken = await getOrRestoreToken(userId, ctx.from?.username, true);
           if (freshToken) {
-            await editMessageContent(ctx, "🔄 Повторите действие.", backToMenu(config?.botBackLabel ?? null, innerStyles?.back, innerEmojiIds));
+            await editMessageContent(ctx, "🔄 Сессия обновлена. Повторите действие.", backToMenu(config?.botBackLabel ?? null, innerStyles?.back, innerEmojiIds));
           } else {
             await editMessageContent(ctx, "❌ Ошибка авторизации. Отправьте /start", backToMenu(config?.botBackLabel ?? null, innerStyles?.back, innerEmojiIds));
           }
@@ -4942,13 +4985,12 @@ composer.on("callback_query:data", async (ctx) => {
         await editMessageContent(ctx, msg.text, payUrlMarkup(payment.payUrl, config?.botBackLabel ?? null, innerStyles?.back, innerEmojiIds), msg.entities);
         extraOptionTargetSub.delete(userId);
       } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "Ошибка создания платежа";
-        const isAuthError = /401|unauthorized|истек|авториз|токен/i.test(msg);
-        if (isAuthError) {
-          tokenStore.delete(userId);
-          const freshToken = await getOrRestoreToken(userId, ctx.from?.username);
+        const msg = userFacingError(e, "Ошибка создания платежа");
+        if (api.isAuthError(e)) {
+          clearToken(userId);
+          const freshToken = await getOrRestoreToken(userId, ctx.from?.username, true);
           if (freshToken) {
-            await editMessageContent(ctx, "🔄 Повторите действие.", backToMenu(config?.botBackLabel ?? null, innerStyles?.back, innerEmojiIds));
+            await editMessageContent(ctx, "🔄 Сессия обновлена. Повторите действие.", backToMenu(config?.botBackLabel ?? null, innerStyles?.back, innerEmojiIds));
           } else {
             await editMessageContent(ctx, "❌ Ошибка авторизации. Отправьте /start", backToMenu(config?.botBackLabel ?? null, innerStyles?.back, innerEmojiIds));
           }
@@ -7791,7 +7833,17 @@ composer.on("callback_query:data", async (ctx) => {
 
     await ctx.answerCallbackQuery({ text: "Неизвестное действие" });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : "Ошибка";
+    if (api.isAuthError(e)) {
+      clearToken(userId);
+      const fresh = await getOrRestoreToken(userId, ctx.from?.username, true);
+      if (fresh) {
+        await ctx.reply("🔄 Сессия обновлена. Нажмите кнопку ещё раз.").catch(() => {});
+      } else {
+        await ctx.reply("❌ Сессия истекла. Отправьте /start").catch(() => {});
+      }
+      return;
+    }
+    const msg = userFacingError(e, "Ошибка");
     await ctx.reply(`❌ ${msg}`).catch(() => {});
   }
 });

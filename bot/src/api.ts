@@ -19,6 +19,16 @@ function getHeaders(token?: string): HeadersInit {
   return h;
 }
 
+export type ApiError = Error & { code?: string; status?: number };
+
+/** Ошибка авторизации (просроченный/невалидный JWT). */
+export function isAuthError(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  const status = (e as ApiError).status;
+  if (status === 401) return true;
+  return /401|unauthorized|invalid or expired token|истек|авториз|токен/i.test(e.message);
+}
+
 async function fetchJson<T>(path: string, opts?: { method?: string; body?: unknown; token?: string }): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     method: opts?.method ?? "GET",
@@ -29,9 +39,10 @@ async function fetchJson<T>(path: string, opts?: { method?: string; body?: unkno
   if (!res.ok) {
     const msg = typeof (data as { message?: string }).message === "string" ? (data as { message: string }).message : `HTTP ${res.status}`;
     // T-tariff-restriction (портировано из WolfVPN): прокидываем code (напр. TARIFF_RESTRICTED) для бота.
-    const err = new Error(msg) as Error & { code?: string };
+    const err = new Error(msg) as ApiError;
     const code = (data as { code?: string }).code;
     if (typeof code === "string") err.code = code;
+    err.status = res.status;
     throw err;
   }
   return data as T;
