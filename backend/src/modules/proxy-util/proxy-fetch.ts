@@ -38,13 +38,26 @@ function getOrCreateDispatcher(proxyUrl: string): any {
 /**
  * fetch через прокси (если proxyUrl задан), иначе — обычный fetch.
  * Поддерживает HTTP(S) и SOCKS5 прокси.
+ *
+ * Важно: undici ProxyAgent + FormData (multipart) ломает тело запроса —
+ * Telegram отвечает `Bad Request: there is no photo in the request`.
+ * Для FormData уходим на нативный fetch без прокси (upload один раз → дальше file_id по JSON через прокси).
  */
 export async function proxyFetch(
   url: string | URL,
   init?: RequestInit & { signal?: AbortSignal },
   proxyUrl?: string | null,
 ): Promise<Response> {
-  if (!proxyUrl?.trim()) {
+  const isFormData =
+    typeof FormData !== "undefined" &&
+    !!init?.body &&
+    (init.body instanceof FormData ||
+      Object.prototype.toString.call(init.body) === "[object FormData]");
+
+  if (!proxyUrl?.trim() || isFormData) {
+    if (isFormData && proxyUrl?.trim()) {
+      console.warn("[proxyFetch] FormData: bypass proxy (undici ProxyAgent breaks multipart)");
+    }
     return fetch(url, init);
   }
 

@@ -1507,6 +1507,8 @@ clientRouter.patch("/auto-renew", async (req, res) => {
     autoRenewPriceOptionId?: string | null;
     autoRenewExtraDevices?: number;
     autoRenewPromoCode?: string | null;
+    yookassaPaymentMethodId?: string | null;
+    yookassaPaymentMethodTitle?: string | null;
   } = {};
   if (body.data.enabled !== undefined) updates.autoRenewEnabled = body.data.enabled;
   if (body.data.tariffId !== undefined) updates.autoRenewTariffId = body.data.tariffId;
@@ -1582,11 +1584,39 @@ clientRouter.patch("/auto-renew", async (req, res) => {
     });
   }
 
+  // Критично: Client.autoRenewEnabled и Subscription.autoRenewEnabled раньше
+  // расходились. Профиль выключал только Client, а крон списывал по
+  // Subscription (+ ЮKassa) — отсюда жалобы на списания «при выключенном автопродлении».
+  if (body.data.enabled === false) {
+    updates.yookassaPaymentMethodId = null;
+    updates.yookassaPaymentMethodTitle = null;
+  }
+
   const updated = await prisma.client.update({
     where: { id: client.id },
     data: updates,
     select: { id: true, email: true, telegramId: true, telegramUsername: true, preferredLang: true, preferredCurrency: true, balance: true, referralCode: true, remnawaveUuid: true, trialUsed: true, isBlocked: true, autoRenewEnabled: true, autoRenewTariffId: true, autoRenewPromoCode: true, createdAt: true, onboardingCompleted: true, passwordHash: true },
   });
+
+  if (body.data.enabled === false) {
+    await prisma.subscription.updateMany({
+      where: { ownerId: client.id },
+      data: { autoRenewEnabled: false, autoRenewRetryCount: 0, autoRenewNotifiedAt: null },
+    });
+  } else if (body.data.enabled === true) {
+    // Включение из профиля → primary Subscription тоже включаем, иначе UI подписки
+    // и unified-крон живут в другом флаге.
+    await prisma.subscription.updateMany({
+      where: { ownerId: client.id, subscriptionIndex: 0 },
+      data: {
+        autoRenewEnabled: true,
+        ...(updates.autoRenewTariffId !== undefined ? { autoRenewTariffId: updates.autoRenewTariffId } : {}),
+        ...(updates.autoRenewPriceOptionId !== undefined ? { autoRenewPriceOptionId: updates.autoRenewPriceOptionId } : {}),
+        ...(updates.autoRenewExtraDevices !== undefined ? { autoRenewExtraDevices: updates.autoRenewExtraDevices } : {}),
+      },
+    });
+  }
+
   return res.json(toClientShape(updated));
 });
 
@@ -3261,8 +3291,9 @@ clientRouter.post("/subscription/:type/:id/reissue", async (req, res) => {
 /**
  * POST /api/client/subscription/:type/:id/auto-renew
  * Включить/выключить автосписание для конкретной подписки (root или secondary).
- *  - type=root      → обновляет client.autoRenewEnabled (legacy логика, как было)
- *  - type=secondary → обновляет secondary_subscriptions.auto_renew_enabled (новая логика)
+ * Обе живут в Subscription; Client.autoRenewEnabled синхронизируем для primary
+ * и для legacy-крона. При выключении последней AR-подписки отвязываем карту ЮKassa,
+ * чтобы не было рекуррентных списаний «мимо» флага автопродления.
  *
  * Body: { enabled: boolean }
  * При включении: проверяем что у клиента баланс > 0 (минимум на одну оплату) — иначе предупреждаем.
@@ -3298,11 +3329,11 @@ clientRouter.post("/subscription/:type/:id/auto-renew", async (req, res) => {
   const sub = subType === "root"
     ? await prisma.subscription.findUnique({
         where: { ownerId_subscriptionIndex: { ownerId: clientId, subscriptionIndex: 0 } },
-        select: { id: true, ownerId: true, giftedToClientId: true, tariffId: true },
+        select: { id: true, ownerId: true, giftedToClientId: true, tariffId: true, subscriptionIndex: true },
       })
     : await prisma.subscription.findUnique({
         where: { id: subId },
-        select: { id: true, ownerId: true, giftedToClientId: true, tariffId: true },
+        select: { id: true, ownerId: true, giftedToClientId: true, tariffId: true, subscriptionIndex: true },
       });
   if (!sub || (sub.ownerId !== clientId && sub.giftedToClientId !== clientId)) {
     return res.status(404).json({ message: "Подписка не найдена" });
@@ -3330,7 +3361,56 @@ clientRouter.post("/subscription/:type/:id/auto-renew", async (req, res) => {
     }
   }
   await prisma.subscription.update({ where: { id: sub.id }, data: updates });
-  return res.json({ ok: true, enabled, type: subType });
+
+  let yookassaUnlinked = false;
+  // Карта и Client.AR живут у владельца (плательщика), не у gifted-получателя.
+  const billingOwnerId = sub.ownerId;
+
+  if (enabled) {
+    // Primary → держим Client.autoRenewEnabled в синхроне (профиль / legacy).
+    if (sub.subscriptionIndex === 0) {
+      await prisma.client.update({
+        where: { id: billingOwnerId },
+        data: {
+          autoRenewEnabled: true,
+          ...(updates.autoRenewTariffId !== undefined ? { autoRenewTariffId: updates.autoRenewTariffId } : {}),
+          ...(updates.autoRenewPriceOptionId !== undefined ? { autoRenewPriceOptionId: updates.autoRenewPriceOptionId } : {}),
+          ...(updates.autoRenewExtraDevices !== undefined ? { autoRenewExtraDevices: updates.autoRenewExtraDevices } : {}),
+        },
+      });
+    }
+  } else {
+    // Выключение: для primary сразу гасим Client.AR.
+    if (sub.subscriptionIndex === 0) {
+      await prisma.client.update({
+        where: { id: billingOwnerId },
+        data: { autoRenewEnabled: false },
+      });
+    }
+
+    // Если у владельца больше нет ни одной AR-подписки — отвязываем карту ЮKassa
+    // (иначе рекуррент мог жить «мимо» выключенного автопродления).
+    const remainingAr = await prisma.subscription.count({
+      where: { ownerId: billingOwnerId, autoRenewEnabled: true },
+    });
+    if (remainingAr === 0) {
+      const before = await prisma.client.findUnique({
+        where: { id: billingOwnerId },
+        select: { yookassaPaymentMethodId: true },
+      });
+      await prisma.client.update({
+        where: { id: billingOwnerId },
+        data: {
+          autoRenewEnabled: false,
+          yookassaPaymentMethodId: null,
+          yookassaPaymentMethodTitle: null,
+        },
+      });
+      yookassaUnlinked = !!before?.yookassaPaymentMethodId;
+    }
+  }
+
+  return res.json({ ok: true, enabled, type: subType, yookassaUnlinked });
 });
 
 /**

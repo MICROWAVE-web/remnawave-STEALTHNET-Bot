@@ -7072,11 +7072,20 @@ composer.on("callback_query:data", async (ctx) => {
         const item = all.items.find((it) => it.type === subType && it.id === subId);
         const wasEnabled = item?.autoRenewEnabled === true;
         if (wasEnabled) {
-          // Просто выключаем без подтверждения.
-          await api.toggleSubAutoRenew(token, subType, subId, false);
+          // Просто выключаем без подтверждения. Backend гасит Subscription.AR,
+          // синхронизирует Client.AR и при отсутствии других AR-подписок отвязывает карту ЮKassa.
+          const toggleRes = await api.toggleSubAutoRenew(token, subType, subId, false);
+          const lines = [
+            "🛑 Автосписание выключено.",
+            "",
+            "Подписка больше не будет продлеваться автоматически — списаний с баланса и с карты ЮKassa по этой подписке не будет.",
+          ];
+          if (toggleRes.yookassaUnlinked) {
+            lines.push("", "💳 Сохранённая карта ЮKassa отвязана (других подписок с автопродлением не осталось).");
+          }
           await editMessageContent(
             ctx,
-            "🛑 Автосписание выключено.\n\nПодписка больше не будет продлеваться автоматически.",
+            lines.join("\n"),
             {
               inline_keyboard: [
                 [{ text: backToSubLabel(config?.botEmojis ?? null), callback_data: `sub:detail:${subType}:${subId}` }],

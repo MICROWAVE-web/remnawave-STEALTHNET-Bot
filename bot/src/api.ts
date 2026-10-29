@@ -333,7 +333,7 @@ export async function toggleSubAutoRenew(
   type: "root" | "secondary",
   id: string,
   enabled: boolean,
-): Promise<{ ok: boolean; enabled: boolean; type: string; message?: string; code?: string }> {
+): Promise<{ ok: boolean; enabled: boolean; type: string; yookassaUnlinked?: boolean; message?: string; code?: string }> {
   return fetchJson(`/api/client/subscription/${type}/${encodeURIComponent(id)}/auto-renew`, {
     method: "POST",
     body: { enabled },

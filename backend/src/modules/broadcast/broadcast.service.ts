@@ -351,8 +351,14 @@ async function sendTelegramPhoto(
   return telegramSendWith429Retry(async () => {
     const form = new FormData();
     form.append("chat_id", chatId);
-    if (typeof photo === "string") form.append("photo", photo);
-    else form.append("photo", new Blob([photo], { type: mimeType }), fileName || "image");
+    if (typeof photo === "string") {
+      form.append("photo", photo);
+    } else {
+      // Uint8Array: Blob([Buffer]) через некоторые fetch/прокси даёт пустое тело.
+      // ASCII-имя: кириллица в Content-Disposition ломает multipart у Telegram.
+      const safeName = (fileName || "image.png").replace(/[^\w.\-]+/g, "_") || "image.png";
+      form.append("photo", new Blob([new Uint8Array(photo)], { type: mimeType || "image/png" }), safeName);
+    }
     if (caption) {
       form.append("caption", caption);
       form.append("parse_mode", "HTML");
@@ -509,7 +515,10 @@ async function sendTelegramVideo(
     const form = new FormData();
     form.append("chat_id", chatId);
     if (typeof video === "string") form.append("video", video);
-    else form.append("video", new Blob([video], { type: mimeType }), fileName || "video");
+    else {
+      const safeName = (fileName || "video.mp4").replace(/[^\w.\-]+/g, "_") || "video.mp4";
+      form.append("video", new Blob([new Uint8Array(video)], { type: mimeType || "video/mp4" }), safeName);
+    }
     if (caption) {
       form.append("caption", caption);
       form.append("parse_mode", "HTML");
@@ -521,7 +530,7 @@ async function sendTelegramVideo(
     // 25.05.2026, WolfVPN — thumbnail передаём ТОЛЬКО при upload бинаря.
     // Для file_id Telegram уже знает превью.
     if (typeof video !== "string" && thumbnail && thumbnail.length > 0) {
-      form.append("thumbnail", new Blob([thumbnail], { type: "image/jpeg" }), "thumb.jpg");
+      form.append("thumbnail", new Blob([new Uint8Array(thumbnail)], { type: "image/jpeg" }), "thumb.jpg");
     }
     if (replyMarkup) form.append("reply_markup", JSON.stringify(replyMarkup));
     return await proxyFetch(url, { method: "POST", body: form }, proxy);
@@ -546,7 +555,10 @@ async function sendTelegramDocument(
     const form = new FormData();
     form.append("chat_id", chatId);
     if (typeof document === "string") form.append("document", document);
-    else form.append("document", new Blob([document], { type: mimeType }), fileName || "file");
+    else {
+      const safeName = (fileName || "file").replace(/[^\w.\-]+/g, "_") || "file";
+      form.append("document", new Blob([new Uint8Array(document)], { type: mimeType || "application/octet-stream" }), safeName);
+    }
     if (caption) {
       form.append("caption", caption);
       form.append("parse_mode", "HTML");

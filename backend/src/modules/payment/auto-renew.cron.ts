@@ -225,15 +225,15 @@ export async function processAutoRenewals() {
   for (const client of clients) {
     if (!client.remnawaveUuid || !client.autoRenewTariff) continue;
 
-    // defensive дедуп — если у клиента primary-подписка
-    // (Subscription[0]) уже имеет autoRenewEnabled=true → её обработает новый Subscription-цикл.
-    // Пропускаем в legacy Client-цикле, чтобы не списать дважды.
-    const primaryHasAutoRenew = await prisma.subscription.findUnique({
+    // Если у клиента есть Subscription[0] — продление только через unified Subscription-цикл.
+    // Раньше skip был только при Sub.AR=true: при Client.AR=true и Sub.AR=false
+    // legacy всё равно списывал (в т.ч. ЮKassa) после «выключения автопродления» в UI подписки.
+    const primarySub = await prisma.subscription.findUnique({
       where: { ownerId_subscriptionIndex: { ownerId: client.id, subscriptionIndex: 0 } },
-      select: { autoRenewEnabled: true },
+      select: { id: true },
     });
-    if (primaryHasAutoRenew?.autoRenewEnabled === true) {
-      console.log(`[auto-renew] Skipping legacy Client-cycle for ${client.id}: Subscription[0].autoRenewEnabled handled by unified cycle.`);
+    if (primarySub) {
+      console.log(`[auto-renew] Skipping legacy Client-cycle for ${client.id}: Subscription[0] exists — handled by unified cycle.`);
       continue;
     }
 
